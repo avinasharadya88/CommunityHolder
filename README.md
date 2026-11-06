@@ -108,11 +108,11 @@ CommunityHolder/
 │   │   │   ├── middleware/    # JWT Auth & KYC Confinement Guard
 │   │   │   ├── modules/       # Auth, KYC, Gatekeeper, ERP, Amenities controllers
 │   │   │   └── server.ts
-│   │   └── tests/             # 23 Automated Vitest test suites (All passing!)
-│   └── web/                   # CRED-Inspired Dark Luxury React 19 Frontend
+│   │   └── tests/             # 52 Automated Vitest test suites (All 9 suites passing!)
+│   └── web/                   # CRED-Inspired Dark Luxury React 19 Frontend (PWA Ready)
 │       ├── src/
 │       │   ├── components/    # CredSlider, BlackCard, InsetWell, GatePulseRadar
-│       │   ├── views/         # ResidentView (Mobile), GuardTabletView, AdminErpView
+│       │   ├── views/         # ResidentView (Mobile/PWA), GuardTabletView, AdminErpView
 │       │   └── App.tsx        # Top command bar with instant 3-persona switcher
 ```
 
@@ -121,59 +121,254 @@ CommunityHolder/
 ## ⚡ Quick Start Guide
 
 ### 1. Prerequisites
-- **Node.js**: v18+ (tested on Node.js v26)
-- **pnpm**: v9+ (or `npm install -g pnpm`)
+- **Node.js**: v18+ (tested on Node.js v20 & v26)
+- **pnpm**: v9+ (or install via `npm install -g pnpm`)
+- **Modern Web Browser**: Google Chrome, Apple Safari, Microsoft Edge, or Mozilla Firefox
+- **Mobile Device (Optional)**: Any Android smartphone (Chrome 90+) or iOS device (Safari 15+) connected to the same Wi-Fi network
 
-### 2. Install Dependencies & Build Packages
+### 2. Install Dependencies & Build Monorepo
+Clone the repository and build all packages from the root directory:
 ```bash
-# Install all monorepo dependencies
+# Clone the repository
+git clone https://github.com/avinasharadya88/CommunityHolder.git
+cd CommunityHolder
+
+# Install dependencies across all packages
 pnpm install
 
-# Build all packages (@communityholder/shared, @communityholder/api, @communityholder/web)
+# Build shared types, API backend, and Web frontend
 pnpm build
 ```
 
-### 3. Run Automated Vitest Test Suite
-Execute the 23 automated test suites covering Auth & E.164, KYC Confinement Guard, Gatekeeper & Offline Sync, ERP Double-Entry Balancing, Amenities Redlock Concurrency, and DPDPA 2023 Retention:
+### 3. Run Automated Vitest Regression Test Suite
+Execute the comprehensive 52 automated tests covering Phone Auth & E.164, KYC Confinement Guard, Gatekeeper & Offline Sync, ERP Double-Entry Ledger, Amenities Redlock Concurrency, DPDPA 2023 Data Retention, Adversarial Security Injections, and Supabase PostgreSQL Database integration:
 ```bash
 pnpm test
 ```
+*Expected Result: `9 passed (9)`, `52 passed (52)`, 100% Pass Rate.*
 
 ### 4. Start Development Servers
+You can start both the backend API and frontend dev server concurrently:
 ```bash
-# Option A: Start both API (port 4000) and Web Frontend (port 3000) simultaneously
+# Start API (Port 4000) and Web App (Port 3000) simultaneously:
 pnpm dev
-
-# Option B: Run services individually
-pnpm dev:api   # API runs at http://localhost:4000
-pnpm dev:web   # Web app runs at http://localhost:3000
+```
+Alternatively, launch services in dedicated terminal tabs:
+```bash
+pnpm dev:api   # API server bound to http://0.0.0.0:4000
+pnpm dev:web   # Web & PWA server bound to http://0.0.0.0:3000 (accessible on LAN)
 ```
 
 ---
 
-## 🧪 Interactive Testing & Persona Verification
+## 🔑 Pre-Seeded Test Personas & Credentials
 
-When launching `pnpm dev:web`, the application opens with an interactive **CRED Luxury Command Bar** providing an instant switcher across all three core personas:
+The platform includes pre-seeded master records for immediate testing across all roles. The system automatically populates the required 6-digit OTP in the input field for streamlined demonstration:
 
-1. 📱 **Resident Mobile Super App** (Simulated iPhone Frame):
-   - **Strict Phone Login**: Enter Indian (`+91`) or international country code (`+1`, `+971`, `+44`) with 6-digit OTP verification.
-   - **First-Time KYC**: Test unverified user (`+919988776655`) to view the **Confinement Guard** blocking gate feeds until Estate Manager approval.
-   - **CRED 3D Black Card**: Inspect the luxury property card for Flat 1204 with tactile hover tilt and Virtual Account Number.
-   - **Slide-to-Pay Dues**: Grab the tactile pill slider and swipe right past 85% to settle maintenance dues.
-   - **Live Gate Intercom Radar**: Click *"Simulate Gate Call"* to experience the pulsing concentric radar and slide to approve entry.
-   - **Pre-Approved Guest Pass**: Generate instant 6-digit guest PINs and QR codes.
+| Persona | Phone Number | Unit / Flat | Role & KYC Status | Primary Capabilities & Flow |
+|---|---|---|---|---|
+| **Resident Owner** | `+91 9876543210` | Flat 1204 (Tower Alpha) | `PRIMARY_OWNER` (Approved) | 3D Black Card, CRED Slide-to-Pay Dues, Gate Intercom Radar, Guest Passes |
+| **New Resident Applicant** | `+91 9988776655` | Flat 101 (Tower Alpha) | `PRIMARY_OWNER` (Pending KYC) | First-time registration, Document Vault, Confinement Guard active |
+| **Estate / Facility Manager** | `+91 9888877777` | Society Office | `FACILITY_MANAGER` (Approved) | Split-screen KYC queue, Double-entry general ledger, Monthly billing runs |
+| **Gate Security Guard** | `+91 9777766666` | Main Security Post | `SECURITY_GUARD` (Approved) | PIN barrier numpad, Walk-in visitor check-in, Overstay tracking, Parcel bay |
 
-2. 📟 **Guard Tablet (Gatekeeper Console)**:
-   - **Tactile PIN Numpad**: Enter 6-digit guest PINs with instant boom barrier lift animation.
-   - **Walk-in Check-in**: Log delivery/cab/guest entries with camera photo simulation that immediately rings the resident intercom.
-   - **Active Occupancy & Overstay**: Real-time timer flagging delivery overstays exceeding 30 minutes in pulsating crimson.
-   - **Parcel Custody Bay**: Log delivery packages with automated 4-digit pickup OTP generation.
+---
 
-3. 🏢 **Admin ERP & Facility Manager Workspace**:
-   - **Split-Screen KYC Queue**: Side-by-side verification pane with anti-tamper watermarking overlay.
-   - **Approve / Reject Action**: Approve resident access or reject with mandatory remediation reasons.
-   - **Double-Entry General Ledger**: Live balance verification (`Total Debits == Total Credits`).
-   - **Automated Billing Run**: Issue monthly maintenance invoices calculated by unit square footage.
-   - **VAN Banking Webhook**: Simulate real-time RTGS/UPI bank inward credits directly reconciling flat invoices.
-   - **DPDPA 2023 Purge Worker**: Trigger statutory 90-day visitor photo purging.
+## 🖥️ Web Application User Guide (Desktop & Admin)
+
+The Web application runs at **`http://localhost:3000`** with the CRED luxury dark aesthetic (`#0B0D10` obsidian surfaces, neon mint `#00F5A0`, and electric gold accents).
+
+### 1. Navigation & Command Bar
+Upon opening `http://localhost:3000`, the top sticky command bar provides:
+- **API Status Indicator**: Pulsing green dot showing `API Online` (connected to Express + Supabase reverse proxy) or `Mock Mode`.
+- **Persona Quick-Switcher**: Instantly toggle between **Resident Mobile**, **Guard Tablet**, and **Admin ERP** without re-authenticating.
+- **Testing Guide (`HelpCircle`)**: Click the top-right button to open an interactive overlay detailing step-by-step test verification workflows.
+
+---
+
+### 2. Admin ERP & Facility Manager Workspace
+Click the **Admin ERP** button in the top switcher bar to access society administration:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ Admin ERP Tabs: [ KYC Review Queue ]  [ General Ledger ]  [ Billing ]  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### A. KYC Review Queue & Split-Screen Inspection
+1. Navigate to **Admin ERP > KYC Review Queue**.
+2. Select any pending application from the left panel (e.g. `Aditi Rao - Flat 101`).
+3. **Split-Screen Document Viewer**:
+   - The right panel displays the submitted Government ID (Aadhaar/Passport) and Property Ownership Proof (Sale Deed) with an anti-tamper watermark (`CONFIDENTIAL - SOCIETY VERIFICATION ONLY`).
+   - Check the unit conflict indicator (flags if another approved resident already claims Flat 101).
+4. **Approve Action**: Click **"Approve Resident"** to grant access, create the unit membership record, and release the user from the mobile confinement guard.
+5. **Reject Action**: Click **"Reject Application"** to open the remediation modal, select the reason (`DOCUMENT_ILLEGIBLE`, `NAME_MISMATCH`, `INVALID_DEED`, `UNIT_CONFLICT`), add review notes, and notify the resident.
+
+#### B. Double-Entry General Ledger
+1. Click the **General Ledger** tab.
+2. Review the live trial balance:
+   - **Total Debits** vs **Total Credits** balance verification indicator (`In Balance: YES`).
+   - Transaction ledger recording account heads (`Accounts Receivable`, `Bank Operating Account`, `Maintenance Income`, `Member Advance Liability`).
+
+#### C. Automated Monthly Billing & VAN Webhook
+1. Click the **Billing & VAN** tab.
+2. **Monthly Billing Run**:
+   - Adjust the rate per square foot (default: `₹0.10 / sq.ft`).
+   - Click **"Run Monthly Billing"** to issue maintenance invoices for all units according to their super built-up area.
+3. **Virtual Account Number (VAN) Banking Simulation**:
+   - Enter a simulated bank transfer amount (e.g. `₹120.00`).
+   - Click **"Simulate VAN Webhook Transfer"** to trigger a real-time banking credit webhook that matches the unit's virtual account number, marks the invoice `PAID`, and logs the corresponding ledger entry.
+
+#### D. Statutory DPDPA 2023 Purge Worker
+1. Click the **DPDPA Purge** tab.
+2. Click **"Run 90-Day Visitor Photo Purge Worker"** to verify statutory compliance by auto-purging visitor camera snapshots older than 90 days while preserving encrypted gate audit timestamps.
+
+---
+
+### 3. Guard Tablet (Gatekeeper Console)
+Click the **Guard Tablet** button in the top switcher bar. This view is optimized for high-contrast touch tablets at security boom barriers:
+
+#### A. Tactile PIN Barrier Numpad
+1. Click **PIN Validator**.
+2. Type a 6-digit guest passcode using the debossed on-screen numeric keypad (or test with pre-approved PIN `849201`).
+3. Click **"Verify PIN & Open Barrier"**:
+   - Valid PIN: Displays green confirmation, guest name, destination unit, and triggers the boom barrier lift animation.
+   - Already-Used / Expired PIN: Displays crimson error warning prohibiting gate entry.
+
+#### B. Walk-in Visitor Check-in
+1. Click **Walk-in Check-in**.
+2. Select the visitor category: `Delivery`, `Guest`, `Cab`, or `Service`.
+3. Enter visitor name (e.g. `Mukesh`), mobile number, vehicle registration number, and destination unit.
+4. Tap **"Simulate Camera Capture"** to attach the visitor's face snapshot.
+5. Click **"Ring Resident Intercom"**: This instantly pushes an alert to the resident's mobile app with the live radar pulse.
+
+#### C. Active Visitors & Crimson Overstay Alert
+1. Click **Active Visitors**.
+2. View real-time occupancy counts on the society premises.
+3. Observe the overstay monitoring timers: delivery personnel on premises exceeding 30 minutes are flagged in pulsating crimson (`OVERSTAY DETECTED`).
+4. Click **"Check-Out"** when a visitor departs to record exit timestamps and close the session.
+
+#### D. Parcel Custody Bay
+1. Click **Parcels**.
+2. Select the courier company (`Amazon`, `Flipkart`, `Swiggy Instamart`, `BlueDart`) and destination flat.
+3. Click **"Log Inward Parcel"**: The system creates an encrypted parcel custody entry and generates a secure 4-digit pickup OTP delivered to the resident.
+
+---
+
+## 📱 Mobile Application User Guide (Android & iOS)
+
+CommunityHolder includes full mobile support, providing a native app experience on Android and iOS through responsive viewports and **Progressive Web App (PWA)** capabilities.
+
+### 1. Connect Mobile Device to Local Machine (LAN)
+
+To access the application directly on your phone:
+1. Ensure your mobile phone and development machine are connected to the **same Wi-Fi network**.
+2. Find the local IP address of your host machine:
+   - **macOS**: Run in terminal:
+     ```bash
+     ipconfig getifaddr en0   # or en1 for secondary interface
+     ```
+   - **Linux**: Run `hostname -I | awk '{print $1}'`
+   - **Windows**: Run `ipconfig` and find the `IPv4 Address` under Wireless LAN adapter.
+   *(Example local IP: `192.168.68.112`)*
+3. On your mobile phone, open Chrome (Android) or Safari (iOS) and navigate to:
+   ```
+   http://<YOUR_LOCAL_IP>:3000
+   # Example: http://192.168.68.112:3000
+   ```
+
+---
+
+### 2. Install as Standalone App (PWA)
+
+Installing the app to your home screen removes the browser URL bar and enables full-screen native mobile execution:
+
+#### 🤖 Android (Google Chrome)
+1. Open `http://<YOUR_LOCAL_IP>:3000` in Google Chrome on Android.
+2. Tap the **three vertical dots** (`⋮`) in the top-right corner of Chrome.
+3. Tap **"Install App"** (or **"Add to Home Screen"**).
+4. Tap **"Install"** on the confirmation prompt.
+5. The CommunityHolder app icon will appear on your Home Screen and in your App Drawer.
+6. Tap the icon to launch the app in standalone full-screen mode with dark luxury status bars.
+
+#### 🍏 iOS / iPhone / iPad (Apple Safari)
+1. Open `http://<YOUR_LOCAL_IP>:3000` in Apple Safari on your iPhone or iPad.
+2. Tap the **Share** button (`⎙` / square with an arrow pointing upwards) in the bottom toolbar.
+3. Scroll down the share sheet and tap **"Add to Home Screen"** (`➕`).
+4. In the top-right corner, tap **"Add"**.
+5. The CommunityHolder icon will appear on your iOS home screen.
+6. Tap the icon to launch the app in borderless full-screen mode with translucent black status bar styling (`black-translucent`).
+
+---
+
+### 3. Step-by-Step Resident Super App Mobile Workflows
+
+#### Flow A: Mobile Phone Authentication
+1. Tap the country code picker to select your region:
+   - `🇮🇳 +91` (India)
+   - `🇺🇸 +1` (USA / Canada)
+   - `🇦🇪 +971` (UAE)
+   - `🇬🇧 +44` (United Kingdom)
+2. Enter your 10-digit mobile number:
+   - To test as **Approved Resident**: Enter `9876543210`
+   - To test as **First-Time Registration**: Enter `9988776655`
+3. Tap **"Request OTP"**:
+   - The system calls the backend OTP generator and automatically populates the 6-digit code in the inset wells for rapid testing.
+4. Tap **"Verify & Enter"** to enter the application.
+
+---
+
+#### Flow B: First-Time Resident Onboarding & Confinement Guard
+*(Use phone number `+91 9988776655`)*
+1. After OTP verification, you are greeted with the **Digital KYC Onboarding Vault**.
+2. Fill in the resident application form:
+   - **Full Name**: Enter `Aditi Rao`
+   - **Flat Number**: Enter `Flat 101`
+   - **Occupancy Role**: Select `Primary Owner`, `Co-Owner`, or `Tenant`
+   - **Documents**: Default government ID (Aadhaar) and sale deed are attached.
+3. Tap **"Submit Registration"**.
+4. **Experience the API Gateway Confinement Guard**:
+   - The resident dashboard transitions to an amber **"Application Under Review"** status screen.
+   - All gate feeds, intercom controls, amenity bookings, and payment APIs remain strictly confined until an Estate Manager reviews the documents.
+5. **Approve via Admin**:
+   - Switch to **Admin ERP** in your web browser, navigate to the **KYC Review Queue**, select Aditi Rao, and click **"Approve Resident"**.
+   - Return to the mobile app or tap refresh: the resident dashboard instantly unlocks all features!
+
+---
+
+#### Flow C: Approved Resident Super App Dashboard
+*(Use phone number `+91 9876543210`)*
+Once logged in as an approved resident of Flat 1204:
+
+1. **CRED 3D Black Card Carousel**:
+   - Touch and tilt the luxury property card for Flat 1204.
+   - View your flat's unique Virtual Account Number (`VAN: HDFC0001204`), Super Built-Up Area (`1,500 sq.ft`), and outstanding maintenance balance.
+2. **CRED Tactile Slide-to-Pay**:
+   - View pending maintenance dues (e.g. `₹120.00`).
+   - Touch the glowing mint **"SLIDE TO PAY DUES"** pill slider.
+   - Drag the slider thumb to the right: dragging past the 85% threshold locks the slider and executes an instant ledger-balanced payment.
+   - A celebratory confirmation banner appears, and the dues status updates to **PAID**.
+3. **Live Gate Intercom Radar**:
+   - Tap the **"Simulate Gate Call"** button to simulate an incoming visitor or delivery at the security barrier.
+   - The screen displays the **Gate Pulse Radar Card** featuring pulsating concentric radar rings, visitor photo, delivery company (`Swiggy Instamart`), vehicle number, and flat destination.
+   - Drag the **"SLIDE TO APPROVE"** slider to grant immediate entry, or tap **"Leave at Gate"** if you are away.
+4. **Generate Pre-Approved Guest Passes**:
+   - Tap **"+ Guest Pass"**.
+   - Enter guest name (e.g. `Karan Malhotra`) and category (`Guest`, `Cab`, `Delivery`).
+   - Tap **"Generate Pass"**: Receive a secure 6-digit gate PIN (`849201`) and a scannable QR code that your guest can present directly at the security gate.
+5. **Parcel Delivery Bay & Pickup OTP**:
+   - View parcels held at the security gate under the **Deliveries at Gate** section.
+   - Check the courier company and your secure 4-digit pickup OTP (`7821`). Present this code to security guards to retrieve your delivery.
+
+---
+
+## 🔍 Troubleshooting & Network FAQ
+
+| Issue | Cause | Solution |
+|---|---|---|
+| **Mobile phone cannot open `http://<IP>:3000`** | Devices on different Wi-Fi networks or firewall blocking port | Ensure phone and computer are on the same Wi-Fi SSID. Verify computer firewall allows incoming TCP connections on port 3000 and 4000. |
+| **API calls fail or show "Mock Mode" on mobile** | API server not running or proxy not routing | Run `pnpm dev` from the root directory so both API (port 4000) and Web (port 3000) run simultaneously with Vite reverse proxy. |
+| **"EPERM 127.0.0.1" during tests on macOS** | macOS sandbox network restrictions during CLI tests | Run tests with network permissions or run `pnpm --filter @communityholder/api test` in terminal. |
+| **PWA does not show "Install" banner** | Manifest not detected or non-HTTPS / non-localhost origin | Google Chrome requires either `localhost` or an active LAN IP. Tap Chrome menu (`⋮`) and select "Add to Home Screen" manually. |
+
 
