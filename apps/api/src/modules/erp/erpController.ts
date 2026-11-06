@@ -7,6 +7,18 @@ export const ErpController = {
   generateMonthlyInvoices(req: Request, res: Response) {
     const { society_id, rate_per_sqft = 0.08, bill_month = '2026-11' } = req.body;
 
+    if (!society_id) {
+      return res.status(400).json({ error: 'MISSING_FIELDS', message: 'society_id is required' });
+    }
+
+    if (!db.societies.has(society_id)) {
+      return res.status(404).json({ error: 'SOCIETY_NOT_FOUND', message: 'Society does not exist' });
+    }
+
+    if (typeof rate_per_sqft !== 'number' || rate_per_sqft <= 0) {
+      return res.status(400).json({ error: 'INVALID_RATE', message: 'rate_per_sqft must be a positive number' });
+    }
+
     const generated: Invoice[] = [];
     for (const unit of db.units.values()) {
       if (unit.society_id === society_id) {
@@ -57,6 +69,13 @@ export const ErpController = {
 
   settlePayment(req: Request, res: Response) {
     const { invoice_id, amount, payment_method = 'UPI' } = req.body;
+
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({
+        error: 'INVALID_PAYMENT_AMOUNT',
+        message: 'Payment amount must be a positive number greater than 0',
+      });
+    }
 
     const invoice = db.invoices.get(invoice_id);
     if (!invoice) {
@@ -119,8 +138,15 @@ export const ErpController = {
   vanWebhook(req: Request, res: Response) {
     const { virtual_account_number, amount, utr_reference } = req.body;
 
-    if (!virtual_account_number || !amount) {
+    if (!virtual_account_number || amount === undefined || amount === null) {
       return res.status(400).json({ error: 'MISSING_FIELDS' });
+    }
+
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({
+        error: 'INVALID_PAYMENT_AMOUNT',
+        message: 'Webhook amount must be a positive number greater than 0',
+      });
     }
 
     // Identify unit by VAN

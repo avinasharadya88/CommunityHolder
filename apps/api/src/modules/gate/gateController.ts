@@ -121,6 +121,9 @@ export const GateController = {
 
     for (const session of db.visitorSessions.values()) {
       if (session.passcode === passcode && session.is_pre_approved) {
+        if (society_id && session.society_id !== society_id) {
+          continue; // Cross-society isolation: cannot use pass at another society barrier
+        }
         matchedSession = session;
         break;
       }
@@ -128,6 +131,13 @@ export const GateController = {
 
     if (!matchedSession) {
       return res.status(404).json({ error: 'PIN_NOT_FOUND', message: 'Invalid or non-existent guest PIN' });
+    }
+
+    if (matchedSession.status === 'CHECKED_IN') {
+      return res.status(400).json({
+        error: 'PIN_ALREADY_USED',
+        message: `PIN was already used for entry at ${matchedSession.checked_in_at}. Single-use pre-approved pass.`,
+      });
     }
 
     if (matchedSession.valid_until && new Date(matchedSession.valid_until) < now) {

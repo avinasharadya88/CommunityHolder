@@ -5,6 +5,7 @@ import { KycController } from './modules/kyc/kycController.js';
 import { GateController } from './modules/gate/gateController.js';
 import { ErpController } from './modules/erp/erpController.js';
 import { AmenitiesController } from './modules/amenities/amenitiesController.js';
+import { HelpdeskController } from './modules/helpdesk/helpdeskController.js';
 import { authMiddleware } from './middleware/authMiddleware.js';
 import { kycConfinementGuard } from './middleware/kycConfinementGuard.js';
 import { db } from './db/inMemoryDb.js';
@@ -70,6 +71,12 @@ export function createApp() {
   // Amenities
   operational.post('/amenities/bookings', AmenitiesController.createBooking);
   operational.get('/amenities/bookings', AmenitiesController.listBookings);
+
+  // Helpdesk & SLA Escalation (TC-HELP-001)
+  operational.post('/helpdesk/tickets', HelpdeskController.createTicket);
+  operational.get('/helpdesk/tickets', HelpdeskController.listTickets);
+  operational.patch('/helpdesk/tickets/:id/status', HelpdeskController.updateStatus);
+  operational.post('/admin/maintenance/escalate-sla-tickets', HelpdeskController.runSlaEscalationCron);
 
   // NFR Security / DPDPA Purge Worker Endpoint
   operational.post('/admin/maintenance/purge-old-visitor-photos', (req, res) => {

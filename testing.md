@@ -587,7 +587,55 @@ To execute these tests, ensure the following test accounts and test harnesses ar
 
 ---
 
-## 11. Test Execution Sign-Off Matrix
+## 11. Module 10: Adversarial Breaking Tests & Vulnerability Remediations
+
+This module contains adversarial stress tests designed to actively attempt breaking the API, bypassing confinement, corrupting ledgers, or leaking cross-tenant data:
+
+### TC-ADV-001: Zero-Byte & Negative File Size Exploit (Storage Tampering)
+- **Attack Vector**: Requesting presigned URLs with `file_size_bytes = 0`, negative values (`-1024`), or non-integer inputs to bypass bucket quota checks.
+- **Vulnerability Found**: Server previously checked `!file_size_bytes` which evaluated `0` as falsy but allowed negative numbers.
+- **Remediation Applied**: Enforced strict positive integer validation: `typeof file_size_bytes === 'number' && file_size_bytes > 0 && Number.isFinite(file_size_bytes)`.
+- **Status**: **PASS (Verified by Vitest `adversarial.test.ts`)**
+
+### TC-ADV-002: Path Traversal Injection in KYC Document Vault
+- **Attack Vector**: Submitting malicious `file_url` strings containing `../../../../etc/passwd` or protocol schemes `file:///`.
+- **Vulnerability Found**: Application accepted arbitrary strings in `file_url` during KYC submission.
+- **Remediation Applied**: Enforced strict path traversal sanitization rejecting `..`, leading slashes `/`, backslashes `\`, and URL protocol prefixes.
+- **Status**: **PASS (Verified by Vitest `adversarial.test.ts`)**
+
+### TC-ADV-003: Negative & Non-Finite Payment Amounts in ERP Settlement (Ledger Corruption)
+- **Attack Vector**: Sending `amount: -500.0` or `amount: NaN` to `/api/v1/payments/settle` to reverse payments or inflate ledger debits.
+- **Vulnerability Found**: Invoicing engine allowed negative addition `invoice.amount_paid += amount`, potentially creating negative dues and corrupted double-entry journal lines.
+- **Remediation Applied**: Added positive finite number guard rejecting any non-positive or non-numeric amount with `400 Bad Request (INVALID_PAYMENT_AMOUNT)`.
+- **Status**: **PASS (Verified by Vitest `adversarial.test.ts`)**
+
+### TC-ADV-004: Inward Negative Credit Injection in Banking VAN Webhook
+- **Attack Vector**: External banking webhook simulation with negative credit amount (`amount: -120.0`).
+- **Vulnerability Found**: VAN webhook credited advance balances without checking for positive numbers.
+- **Remediation Applied**: Webhook parser rejects non-positive credits before initiating database transaction or ledger posting.
+- **Status**: **PASS (Verified by Vitest `adversarial.test.ts`)**
+
+### TC-ADV-005: Pre-Approved PIN Replay & Barrier Double-Entry Attack
+- **Attack Vector**: Reusing a 6-digit guest PIN that has already been validated and marked `CHECKED_IN` to gain unauthorized re-entry.
+- **Vulnerability Found**: Server re-validated the same PIN on consecutive calls and returned `200 OK`.
+- **Remediation Applied**: Enforced single-use validation: if `matchedSession.status === 'CHECKED_IN'`, request is rejected with `400 Bad Request (PIN_ALREADY_USED)`.
+- **Status**: **PASS (Verified by Vitest `adversarial.test.ts`)**
+
+### TC-ADV-006: Inverted Amenity Booking Time Range (Chronological Tampering)
+- **Attack Vector**: Submitting `booking_end` earlier than `booking_start` (e.g., 07:00 PM to 06:00 PM).
+- **Vulnerability Found**: Concurrency lock acquired without chronological timestamp verification.
+- **Remediation Applied**: Added interval sanity check: `endDate <= startDate` returns `400 Bad Request (INVALID_BOOKING_INTERVAL)`.
+- **Status**: **PASS (Verified by Vitest `adversarial.test.ts`)**
+
+### TC-ADV-007: Cross-Tenant PIN Boundary Infiltration Attack
+- **Attack Vector**: Presenting a valid 6-digit PIN created for Society A at the gate barrier of Society B.
+- **Vulnerability Found**: Barrier validator matched passcode globally across all societies.
+- **Remediation Applied**: Constrained PIN resolution by `society_id`, isolating cross-tenant barrier validation.
+- **Status**: **PASS (Verified by Vitest `adversarial.test.ts`)**
+
+---
+
+## 12. Test Execution Sign-Off Matrix
 
 | Test Suite / Category | Total Test Cases | Automated (CI/CD) | Manual / Hardware Test | Blocking Gate |
 |---|---|---|---|---|
@@ -597,8 +645,10 @@ To execute these tests, ensure the following test accounts and test harnesses ar
 | **Module 4: Real-Time WebRTC Intercom** | 2 Cases | 1 Automated | 1 Audio Lab | Release Candidate |
 | **Module 5: Offline Sync Engine** | 3 Cases | 3 Automated | 0 | PR Merge |
 | **Module 6: Society ERP Accounting** | 4 Cases | 4 Automated | 0 | PR Merge |
-| **Module 7: Amenities & Helpdesk** | 2 Cases | 2 Automated | 0 | PR Merge |
-| **Module 8: CRED UI & Slide Physics** | 4 Cases | 2 Automated | 2 Haptic / Lux | Release Candidate |
-| **Module 9: NFR, Performance & Security**| 4 Cases | 3 Automated | 1 A11y Audit | Pre-Production |
-| **TOTAL** | **38 Cases** | **30 Automated (79%)**| **8 Hardware/Audit** | **Zero P0 Defect Policy** |
+| **Module 7: Amenities & Concurrency** | 2 Cases | 2 Automated | 0 | PR Merge |
+| **Module 8: Helpdesk & SLA Escalation** | 2 Cases | 2 Automated | 0 | PR Merge |
+| **Module 9: CRED UI & Slide Physics** | 4 Cases | 2 Automated | 2 Haptic / Lux | Release Candidate |
+| **Module 10: Adversarial Breaking Tests**| 8 Cases | 8 Automated | 0 | PR Merge |
+| **Module 11: NFR, Performance & Security**| 4 Cases | 3 Automated | 1 A11y Audit | Pre-Production |
+| **TOTAL** | **48 Cases** | **40 Automated (83%)**| **8 Hardware/Audit** | **Zero P0 Defect Policy** |
 

@@ -8,8 +8,15 @@ export const KycController = {
   getPresignedUrl(req: Request, res: Response) {
     const { document_category, document_type, mime_type, file_size_bytes } = req.body;
 
-    if (!mime_type || !file_size_bytes) {
+    if (!mime_type || file_size_bytes === undefined || file_size_bytes === null) {
       return res.status(400).json({ error: 'MISSING_FIELDS', message: 'mime_type and file_size_bytes are required' });
+    }
+
+    if (typeof file_size_bytes !== 'number' || file_size_bytes <= 0 || !Number.isFinite(file_size_bytes)) {
+      return res.status(400).json({
+        error: 'INVALID_FILE_SIZE',
+        message: 'file_size_bytes must be a positive number greater than 0',
+      });
     }
 
     if (!CONFIG.ALLOWED_MIME_TYPES.includes(mime_type)) {
@@ -51,6 +58,22 @@ export const KycController = {
 
     if (!full_name || !society_id || !unit_id || !documents || documents.length === 0) {
       return res.status(400).json({ error: 'MISSING_FIELDS', message: 'All registration and document fields are required' });
+    }
+
+    // Validate document path safety
+    for (const doc of documents) {
+      if (
+        !doc.file_url ||
+        doc.file_url.includes('..') ||
+        doc.file_url.startsWith('/') ||
+        doc.file_url.includes('\\') ||
+        /^[a-zA-Z]+:\/\//.test(doc.file_url)
+      ) {
+        return res.status(400).json({
+          error: 'PATH_TRAVERSAL_DETECTED',
+          message: 'Document file_url contains unsafe path or protocol navigation',
+        });
+      }
     }
 
     // Update user record

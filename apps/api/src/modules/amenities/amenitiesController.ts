@@ -11,6 +11,23 @@ export const AmenitiesController = {
       return res.status(400).json({ error: 'MISSING_FIELDS' });
     }
 
+    const amenity = db.amenities.get(amenity_id);
+    if (!amenity) {
+      return res.status(404).json({
+        error: 'AMENITY_NOT_FOUND',
+        message: 'The requested amenity does not exist',
+      });
+    }
+
+    const startDate = new Date(booking_start);
+    const endDate = new Date(booking_end);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || endDate <= startDate) {
+      return res.status(400).json({
+        error: 'INVALID_BOOKING_INTERVAL',
+        message: 'booking_end must be chronologically after booking_start',
+      });
+    }
+
     const lockKey = `amenity:${amenity_id}:slot:${booking_start}`;
 
     // Redis Distributed Lock Simulation
