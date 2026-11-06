@@ -1,0 +1,16 @@
+{
+  "name": "communityholder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CommunityHolder — Unified Smart Society & Community Management Ecosystem",
+  "scripts": {
+    "build": "pnpm --filter \"@communityholder/*\" run build",
+    "test": "pnpm --filter \"@communityholder/api\" run test",
+    "dev:api": "pnpm --filter \"@communityholder/api\" run dev",
+    "dev:web": "pnpm --filter \"@communityholder/web\" run dev",
+    "dev": "pnpm --parallel run dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
