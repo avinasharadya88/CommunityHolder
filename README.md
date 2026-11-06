@@ -60,6 +60,19 @@ The complete product, architectural, and engineering blueprint has been document
    - **Usability and Accessibility**: WCAG 2.1 AA compliance (18.2:1 contrast ratio), TalkBack & VoiceOver screen reader integration, 48x48dp touch targets, outdoor sunlight guard mode, and 10 regional/international languages.
    - **Maintainability and Observability**: OpenTelemetry distributed tracing with correlation IDs, Prometheus metric instrumentation, health probes, 85% test coverage gates, and zero-downtime canary deployments.
 
+6. 🧪 **[testing.md](file:///Users/avinasharadya88/Documents/CommunityHolder/testing.md)** — **Comprehensive Test Cases & Quality Assurance Specification**:
+   - Multi-tier testing strategy (Unit, Contract, End-to-End, and Hardware/Audit testing).
+   - Detailed step-by-step test cases covering Happy Flows, Edge Cases, Boundary Values, and Adversarial Scenarios:
+     - **Auth & OTP**: Indian/International E.164, brute-force lockout, rate-limiting, SMS-to-WhatsApp failover.
+     - **KYC & Onboarding**: First-time registration, malicious file rejection, API Gateway confinement guard, manual admin verification, and unit conflict handling.
+     - **Gatekeeper Security**: Walk-in visitor check-in, sub-second pre-approved PIN validation, telephony IVR fallback, overstay detection, and patrol tag tampering.
+     - **WebRTC Intercom**: Two-way audio/video connection and Wi-Fi to 5G network handover.
+     - **Offline Sync Engine**: Offline local PIN verification, outbox flushing, and cloud revocation vs offline pass conflict resolution.
+     - **ERP & Accounting**: Automated billing, Virtual Account Number (VAN) reconciliation, double-payment race conditions, and general ledger zero-balance invariants.
+     - **Amenities & Concurrency**: Redis Redlock tennis court double-booking race condition.
+     - **CRED UI Physics**: Slide-to-Approve 84% snapback vs 86% lock, 3D Black Card parallax tilt, and glove-friendly guard UI.
+     - **NFR & Security Audits**: DPDPA 90-day photo purge verification, multi-tenant RLS penetration testing, and 15,000 req/s morning rush load test.
+
 ---
 
 ## 🛠️ Technology Stack Plan

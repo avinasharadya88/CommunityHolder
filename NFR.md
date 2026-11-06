@@ -286,3 +286,4 @@ Operating an enterprise community platform requires proactive telemetry, distrib
 - **Database Schema Migration Safety**:
   - Schema migrations automated through tools like Flyway / Prisma Migrate.
   - Strict rule against destructive schema migrations (e.g., column drops); all migrations must be backward-compatible using the **Expand/Contract (Parallel Run) Pattern**.
+
