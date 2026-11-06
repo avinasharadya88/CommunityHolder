@@ -42,8 +42,14 @@ The complete product, architectural, and engineering blueprint has been document
    - Entity-Relationship Diagram (ERD) & production PostgreSQL 16 DDL schemas (including `users`, `otp_verifications`, `kyc_documents`, and `unit_members`).
    - Business State Machines (First-Time Registration & KYC Approval, Visitor Pass lifecycle, Maintenance Invoice lifecycle, Helpdesk ticket SLA escalation).
    - REST, WebSocket & Sync API contracts (Phone OTP request/verify, KYC upload presigned URLs, Admin review queue & decision, Gatekeeper check-ins).
-   - UI/UX Design System: Color tokens (Emerald Slate, Deep Forest, Mint Glow), typography hierarchy, screen layout wireframes for mobile onboarding, resident app, and admin split-screen verification workspace.
+   - UI/UX Design System: Color tokens, typography hierarchy, screen layout wireframes for mobile onboarding, resident app, and admin split-screen verification workspace.
    - Edge case analysis and system resiliency matrix.
+
+4. 💎 **[UI_DESIGN.md](file:///Users/avinasharadya88/Documents/CommunityHolder/UI_DESIGN.md)** — **CRED-Inspired UI/UX Design System & Figma Specification**:
+   - Dark Luxury Aesthetic: Obsidian surfaces (`#0A0B0E`), soft tactile neumorphism, dual-directional shadow bevels, and vibrant neon accents (Neon Mint `#00F5A0`, Electric Violet `#7C5CFC`, Sunset Amber `#FFB800`, Neon Crimson `#FF3366`).
+   - Signature Tactile Components: CRED-style **Slide-to-Approve** and **Slide-to-Pay** pill slider with spring release and haptic feedback, 3D Property **Black Card Carousel**, debossed inset OTP wells, and live gate radar pulse card.
+   - Comprehensive Figma Screen Specs: Mobile onboarding, 6-digit OTP verification, first-time KYC document vault, "Application Under Review" confinement screen, resident approved dashboard, incoming gate intercom overlay, ultra-contrast guard tablet, and dual-pane admin KYC review workspace.
+   - Design Tokens (DTCG standard) & ready-to-use Flutter / Tailwind CSS code snippets.
 
 ---
 

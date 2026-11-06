@@ -665,36 +665,40 @@ stateDiagram-v2
 
 ## 5. UI/UX Design System & Layout Specifications
 
-CommunityHolder adopts an intentional, modern design language: clean typography, high-contrast usability for outdoors/gate guards, and frictionless mobile interactions for residents.
+> [!NOTE]
+> The full Figma tokens, tactile component specs (CRED Slider, Black Card Carousel, Inset Wells), motion curves, and sound architecture are documented in detail in [UI_DESIGN.md](file:///Users/avinasharadya88/Documents/CommunityHolder/UI_DESIGN.md).
+
+CommunityHolder adopts **CRED's iconic Dark Luxury, Tactile Neumorphism (Soft UI 2.0) and Neon Cyber Accent** visual language: clean geometry, obsidian slate surfaces, dual-directional shadow bevels, and deliberate high-friction tactile gestures (e.g. Slide-to-Approve and Slide-to-Pay).
 
 ### 5.1 Color Palette & Design Tokens
 ```
-Primary Brand:
-- Emerald Slate:  #0F766E (Primary action, security validated, approved)
-- Deep Forest:    #115E59 (Primary hover, header accents)
-- Mint Glow:      #CCFBF1 (Badges, light highlights)
+Obsidian Canvas & Surfaces:
+- Canvas Deep:     #0A0B0E (True obsidian canvas)
+- Surface Base:    #121318 (Primary container & card surface)
+- Surface Elevated:#181A22 (Elevated modals, floating quick actions)
+- Inset Well:      #07080A (Debossed inputs, slider tracks, OTP boxes)
 
-Neutral Foundations:
-- Space Black:    #090D16 (Primary headings, dark-mode surfaces)
-- Slate Gray:     #64748B (Secondary labels, metadata, borders)
-- Pure Surface:   #FFFFFF (Card backgrounds, modals)
-- Canvas White:   #F8FAFC (App background)
+Vibrant Neon Accents:
+- Neon Mint:       #00F5A0 (Gate approved, verified KYC badge, payment success)
+- Electric Violet: #7C5CFC (Property Black Cards, VIP guest passes)
+- Sunset Amber:    #FFB800 (Pending review, invoice due soon, overstay warning)
+- Neon Crimson:    #FF3366 (SOS emergency trigger, gate denied, overdue penalty)
 
-Semantic Alerts:
-- Success Green:  #10B981 (Gate entry permitted, payment cleared)
-- Warning Amber:  #F59E0B (Overstay alert, invoice due soon)
-- Critical Rose:  #EF4444 (Denied visitor, SOS panic alarm, SLA breached)
+Hairline Borders & Dividers:
+- Metallic Rim:    rgba(255, 255, 255, 0.07)
+- Neon Focus Ring: rgba(0, 245, 160, 0.35)
 ```
 
 ### 5.2 Typography Tokens
-- **Display Font**: `Inter` / `Plus Jakarta Sans` (Geometric, clean readability).
+- **Display Font**: `Plus Jakarta Sans` / `Clash Display` (Geometric, clean readability).
 - **Monospace Font**: `JetBrains Mono` (Passcodes, Virtual Account Numbers, Invoices).
 - **Scale**:
-  - H1: 28px, SemiBold (Screen Titles)
+  - Display Hero: 44px, Bold (Financial balances, hero stats)
+  - Numeric Display: 36px, Bold, Monospace (6-Digit Guest OTP, PINs)
+  - H1: 26px, SemiBold (Screen Titles)
   - H2: 20px, SemiBold (Card Headings)
   - Body 1: 15px, Regular (General Content)
-  - Caption: 12px, Medium (Timestamps, Subtitles)
-  - PIN Display: 36px, Bold, Monospace (6-Digit Guest OTP)
+  - Caption Monospace: 11px, Medium with `+0.16em` tracking (Tags, badges)
 
 ### 5.3 Mobile Onboarding & Registration Screen Wireframes
 
