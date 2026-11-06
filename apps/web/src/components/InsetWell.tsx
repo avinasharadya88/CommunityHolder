@@ -26,3 +26,4 @@ export const InsetWell: React.FC<InsetWellProps> = ({
     </div>
   );
 };
+

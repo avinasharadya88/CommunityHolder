@@ -691,3 +691,4 @@ export const ResidentView: React.FC = () => {
     </div>
   );
 };
+

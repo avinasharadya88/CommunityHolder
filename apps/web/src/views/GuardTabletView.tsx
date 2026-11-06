@@ -580,3 +580,4 @@ export const GuardTabletView: React.FC = () => {
     </div>
   );
 };
+

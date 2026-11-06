@@ -122,3 +122,4 @@ describe('Module 1: Authentication & Phone OTP Tests', () => {
     expect(res2.body.retry_after_seconds).toBeGreaterThan(0);
   });
 });
+

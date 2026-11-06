@@ -114,3 +114,4 @@ export const GatePulseRadar: React.FC<GateAlertProps> = ({
     </div>
   );
 };
+

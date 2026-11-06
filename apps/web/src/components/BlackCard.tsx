@@ -92,3 +92,4 @@ export const BlackCard: React.FC<BlackCardProps> = ({
     </div>
   );
 };
+

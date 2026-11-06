@@ -80,3 +80,4 @@ describe('Module 6: Non-Functional Requirements (NFR) Verification Tests', () =>
     expect(elapsed).toBeLessThan(50); // fast local execution
   });
 });
+
