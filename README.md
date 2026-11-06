@@ -51,6 +51,15 @@ The complete product, architectural, and engineering blueprint has been document
    - Comprehensive Figma Screen Specs: Mobile onboarding, 6-digit OTP verification, first-time KYC document vault, "Application Under Review" confinement screen, resident approved dashboard, incoming gate intercom overlay, ultra-contrast guard tablet, and dual-pane admin KYC review workspace.
    - Design Tokens (DTCG standard) & ready-to-use Flutter / Tailwind CSS code snippets.
 
+5. 🛡️ **[NFR.md](file:///Users/avinasharadya88/Documents/CommunityHolder/NFR.md)** — **Non-Functional Requirements Specification**:
+   - **Security and Privacy**: DPDPA 2023 & GDPR compliance, automated 90-day visitor photo purging, phone number masking, AES-256-GCM, AWS KMS envelope encryption for KYC deeds, asymmetric RS256 JWTs, and multi-tenant Row-Level Security (RLS).
+   - **Reliability and Availability**: 99.99% gate availability SLA, zero-downtime offline-first guard tablet engine (local SQLite + Outbox queue with delta sync), Multi-AZ Aurora PostgreSQL & Redis failover, circuit breakers.
+   - **Scalability and Capacity**: 5,000 societies, 1.5M units, 10M daily gate events, KEDA-driven predictive morning rush autoscaling (15,000 req/s), TimescaleDB hypertables, and PgBouncer connection pooling.
+   - **Performance and Speed**: Latency budgets (Pre-approved check-in < 150ms, VoIP intercom ringing < 500ms, WebRTC setup < 600ms, mobile cold start < 900ms, 60 FPS sustained UI rendering, app bundle < 24MB).
+   - **Compatibility and Portability**: Android 8.0+, iOS 15.0+, 8-10" guard tablets, evergreen desktop browsers (Chrome, Safari, Firefox, Edge), OCI containerization, and cloud-agnostic Kubernetes deployment.
+   - **Usability and Accessibility**: WCAG 2.1 AA compliance (18.2:1 contrast ratio), TalkBack & VoiceOver screen reader integration, 48x48dp touch targets, outdoor sunlight guard mode, and 10 regional/international languages.
+   - **Maintainability and Observability**: OpenTelemetry distributed tracing with correlation IDs, Prometheus metric instrumentation, health probes, 85% test coverage gates, and zero-downtime canary deployments.
+
 ---
 
 ## 🛠️ Technology Stack Plan
