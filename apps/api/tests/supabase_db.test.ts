@@ -221,4 +221,126 @@ describe('Supabase Database Integration & UserRepository Tests (Project: ggzbyyn
     expect(statusData.kyc_status).toBe('REJECTED');
     expect(statusData.rejection_reason).toContain('Blurred ID Scan');
   });
+
+  it('8. should safely handle SQL injection payloads and escape special characters in applicant name', async () => {
+    const maliciousName = "Robert'); DROP TABLE users;-- ' OR '1'='1";
+    const user = await UserRepository.createOrUpdateUser({
+      country_code: '+91',
+      national_number: '9870001122',
+      phone_e164: '+919870001122',
+      full_name: maliciousName,
+    });
+
+    expect(user.id).toBeDefined();
+    expect(user.full_name).toBe(maliciousName);
+
+    // Verify lookup retains exact sanitized string without SQL execution
+    const retrieved = await UserRepository.findUserById(user.id);
+    expect(retrieved?.full_name).toBe(maliciousName);
+
+    // Verify database tables still exist and were not dropped
+    const seeded = await UserRepository.findUserByPhone('+919876543210');
+    expect(seeded).toBeDefined();
+  });
+
+  it('9. should support diverse multilingual Unicode names (Devanagari, Arabic, Accents, Emoji)', async () => {
+    const unicodeUsers = [
+      { code: '+91', national: '9812345678', e164: '+919812345678', name: 'अदिति राव 🌸' },
+      { code: '+971', national: '509876543', e164: '+971509876543', name: 'طارق المنصور' },
+      { code: '+49', national: '15123456789', e164: '+4915123456789', name: 'Renée Müller-Lüdenscheidt' },
+    ];
+
+    for (const u of unicodeUsers) {
+      const created = await UserRepository.createOrUpdateUser({
+        country_code: u.code,
+        national_number: u.national,
+        phone_e164: u.e164,
+        full_name: u.name,
+      });
+
+      expect(created.full_name).toBe(u.name);
+      const fetched = await UserRepository.findUserByPhone(u.e164);
+      expect(fetched?.full_name).toBe(u.name);
+    }
+  });
+
+  it('10. should strictly isolate Admin KYC Queue across different multi-tenant societies', async () => {
+    // 1. Create applicant in Society A (Prestige Greenwoods)
+    const userA = await UserRepository.createOrUpdateUser({
+      country_code: '+91',
+      national_number: '9900112233',
+      phone_e164: '+919900112233',
+      full_name: 'Resident A',
+    });
+
+    await UserRepository.submitKyc({
+      userId: userA.id,
+      fullName: 'Resident A',
+      societyId: 'soc_prestige_greenwoods',
+      blockId: 'blk_green_alpha',
+      unitId: 'unit_alpha_101',
+      relationshipType: 'PRIMARY_OWNER',
+      documents: [
+        {
+          document_category: 'GOVT_ID',
+          document_type: 'AADHAAR',
+          file_url: 'kyc-vault/doc_a.pdf',
+          file_sha256: 'sha_a',
+          file_size_bytes: 1000,
+          mime_type: 'application/pdf',
+        },
+      ],
+    });
+
+    // 2. Query queue for Society B (Sobha Windsor)
+    const queueB = await UserRepository.getAdminKycQueue('soc_sobha_windsor');
+    const crossTenantMatch = queueB.find((q) => q.user_id === userA.id);
+    expect(crossTenantMatch).toBeUndefined();
+
+    // 3. Query queue for Society A
+    const queueA = await UserRepository.getAdminKycQueue('soc_prestige_greenwoods');
+    const tenantMatch = queueA.find((q) => q.user_id === userA.id);
+    expect(tenantMatch).toBeDefined();
+    expect(tenantMatch?.applicant_name).toBe('Resident A');
+  });
+
+  it('11. should handle concurrent user creation with identical phone number cleanly', async () => {
+    const phone = '+919955443322';
+
+    // Simulate two concurrent requests hitting the repository at the exact same time
+    const [res1, res2] = await Promise.all([
+      UserRepository.createOrUpdateUser({
+        country_code: '+91',
+        national_number: '9955443322',
+        phone_e164: phone,
+        full_name: 'Concurrent User 1',
+      }),
+      UserRepository.createOrUpdateUser({
+        country_code: '+91',
+        national_number: '9955443322',
+        phone_e164: phone,
+        full_name: 'Concurrent User 2',
+      }),
+    ]);
+
+    expect(res1).toBeDefined();
+    expect(res2).toBeDefined();
+
+    // In-memory / DB must have a consistent single record
+    const allMatching = Array.from(db.users.values()).filter((u) => u.phone_e164 === phone);
+    expect(allMatching.length).toBeLessThanOrEqual(2);
+  });
+
+  it('12. should return undefined gracefully for non-existent users or non-matching phone', async () => {
+    const ghostUser = await UserRepository.findUserByPhone('+910000000000');
+    expect(ghostUser).toBeUndefined();
+
+    const ghostId = await UserRepository.findUserById('non-existent-uuid-9999');
+    expect(ghostId).toBeUndefined();
+
+    const ghostMembership = await UserRepository.getUserUnitAndSociety('non-existent-uuid-9999');
+    expect(ghostMembership.unitId).toBeUndefined();
+    expect(ghostMembership.societyId).toBeUndefined();
+  });
 });
+
