@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../db/inMemoryDb.js';
 import { CONFIG } from '../../config.js';
+import { UserRepository } from '../../db/userRepository.js';
 import type { RequestOtpDto, VerifyOtpDto, User, Role } from '@communityholder/shared';
 
 // E.164 & country code normalization helper
@@ -98,7 +99,7 @@ export const AuthController = {
     });
   },
 
-  verifyOtp(req: Request, res: Response) {
+  async verifyOtp(req: Request, res: Response) {
     let { country_code, national_number, phone_e164, otp, otp_code } = req.body;
     otp = otp || otp_code;
 
@@ -166,44 +167,20 @@ export const AuthController = {
     // OTP Verified! Consume OTP
     db.otpStore.delete(e164);
 
-    // Look up or create user
-    let user: User | undefined;
-    for (const u of db.users.values()) {
-      if (u.phone_e164 === e164) {
-        user = u;
-        break;
-      }
-    }
-
+    // Look up or create user via UserRepository (Supabase backend with local sync)
+    let user = await UserRepository.findUserByPhone(e164);
     if (!user) {
-      const newUserId = uuidv4();
-      user = {
-        id: newUserId,
+      user = await UserRepository.createOrUpdateUser({
         country_code,
         national_number,
         phone_e164: e164,
         full_name: 'New Applicant',
         kyc_status: 'UNREGISTERED',
-        is_active: true,
-        created_at: new Date().toISOString(),
-      };
-      db.users.set(newUserId, user);
-      db.userRoles.set(newUserId, ['APPLICANT']);
+      });
     }
 
-    const roles: Role[] = db.userRoles.get(user.id) || ['APPLICANT'];
-
-    // Find linked unit/society if verified
-    let societyId: string | undefined;
-    let unitId: string | undefined;
-    for (const m of db.unitMembers.values()) {
-      if (m.user_id === user.id && m.approval_status === 'APPROVED') {
-        unitId = m.unit_id;
-        const unit = db.units.get(unitId);
-        if (unit) societyId = unit.society_id;
-        break;
-      }
-    }
+    const roles = await UserRepository.getUserRoles(user.id);
+    const { unitId, societyId } = await UserRepository.getUserUnitAndSociety(user.id);
 
     // Issue JWT
     const token = jwt.sign(
