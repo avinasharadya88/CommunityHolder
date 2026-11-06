@@ -635,7 +635,508 @@ This module contains adversarial stress tests designed to actively attempt break
 
 ---
 
-## 12. Test Execution Sign-Off Matrix
+## 12. Module 11: Backend Database & Supabase PostgreSQL Verification (Project: ggzbyynthvxwkpdbjklf)
+
+This module provides exhaustive test specifications for validating the **Supabase PostgreSQL 16** managed database infrastructure (`ggzbyynthvxwkpdbjklf`). It evaluates database constraints, foreign key cascades, Row-Level Security (RLS) multi-tenant policies, automated trigger functions, ACID transactional integrity, high-concurrency race conditions, and data retention lifecycles.
+
+---
+
+### 12.1 Schema Constraints & Referential Integrity Tests
+
+#### TC-DB-001: Foreign Key Cascade & Deletion Restrict Invariants
+- **Component**: PostgreSQL Engine / Foreign Key Constraints
+- **Severity**: Critical (P0)
+- **Preconditions**: Staging database populated with test societies, blocks, units, and active residents.
+- **Corner Cases Evaluated**:
+  1. Deletion of a society (`DELETE FROM societies WHERE id = '...'`) cascades cleanly to its child `blocks`, `units`, `accounts`, and `visitor_sessions`.
+  2. Deletion of an active unit member with historical paid invoices is restricted (`RESTRICT` / protected) to preserve financial statutory audit compliance for 7 years.
+- **Step-by-Step Test Steps**:
+  1. Create a dummy test society `soc_test_ephemeral` with 2 blocks, 4 units, and 2 visitor sessions.
+  2. Execute `DELETE FROM societies WHERE id = 'soc_test_ephemeral';`.
+  3. Query `SELECT COUNT(*) FROM units WHERE society_id = 'soc_test_ephemeral';` and `SELECT COUNT(*) FROM visitor_sessions WHERE society_id = 'soc_test_ephemeral';`.
+  4. Attempt deleting a unit referenced by an existing settled invoice: `DELETE FROM units WHERE id = 'unit_alpha_1204';`.
+- **Expected Result**:
+  - Step 3 returns `0` (clean cascade without orphaned children).
+  - Step 4 throws PostgreSQL error `23503 foreign_key_violation` (*"update or delete on table 'units' violates foreign key constraint 'invoices_unit_id_fkey'"*). The invoice and unit remain intact.
+
+#### TC-DB-002: Multi-Column Composite Unique Constraint Enforcement
+- **Component**: Table Constraints (`units`, `accounts`, `unit_members`)
+- **Severity**: Critical (P0)
+- **Corner Cases Evaluated**:
+  1. Attempting to insert duplicate unit number within the same block and society (`society_id, block_id, unit_number`).
+  2. Inserting same unit number in a *different* block of the same society (permitted).
+  3. Assigning the same user twice to the same unit (`unit_id, user_id`).
+  4. Multiple primary emergency contacts assigned to a single flat simultaneously.
+- **Step-by-Step Test Steps**:
+  1. Execute `INSERT INTO units (society_id, block_id, unit_number, super_built_up_area) VALUES ('soc_01', 'blk_alpha', '101', 1200);`.
+  2. Execute identical insert with same `(soc_01, blk_alpha, '101')`.
+  3. Execute insert with `(soc_01, blk_beta, '101')`.
+  4. Execute `INSERT INTO unit_members (unit_id, user_id, member_type) VALUES ('unit_101', 'usr_01', 'TENANT');` twice.
+- **Expected Result**:
+  - Step 2 fails with `23505 unique_violation` on composite index `units_society_id_block_id_unit_number_key`.
+  - Step 3 succeeds (distinct block allows same flat number).
+  - Step 4 fails with `23505 unique_violation` on `unit_members_unit_id_user_id_key`.
+
+#### TC-DB-003: Check Constraint Boundary Tests
+- **Component**: PostgreSQL Table Check Constraints
+- **Severity**: High (P1)
+- **Corner Cases Evaluated**:
+  1. Financial ledger entries with zero or negative amounts (`amount <= 0`).
+  2. Non-numeric / NaN amounts passed via JSON payloads.
+  3. Inverted amenity reservation intervals (`booking_end <= booking_start`).
+  4. Helpdesk ratings outside allowable 1–5 range (`rating = 0` or `rating = 6`).
+  5. Negative carpet area or super built-up area on units.
+- **Step-by-Step Test Steps**:
+  1. Attempt inserting ledger entry: `INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount) VALUES ('tx_01', 'acc_01', 'DEBIT', 0.00);`.
+  2. Attempt inserting ledger entry with `amount = -50.00`.
+  3. Attempt inserting amenity booking: `INSERT INTO amenity_bookings (amenity_id, unit_id, user_id, booking_start, booking_end, total_fee, deposit_amount) VALUES ('amen_01', 'unit_01', 'usr_01', '2026-11-10 18:00:00+00', '2026-11-10 17:00:00+00', 50, 0);`.
+  4. Attempt inserting helpdesk ticket review: `UPDATE helpdesk_tickets SET rating = 6 WHERE id = 'tick_01';`.
+- **Expected Result**:
+  - Steps 1 & 2 fail with `23514 check_violation` (*"check constraint 'ledger_entries_amount_check' is violated"*).
+  - Step 3 fails with `check_violation` (*"booking_end must be strictly greater than booking_start"*).
+  - Step 4 fails with `23514 check_violation` on `helpdesk_tickets_rating_check`.
+
+#### TC-DB-004: CITEXT Case-Insensitive Email & Strict E.164 Phone Normalization
+- **Component**: Data Types (`CITEXT`) & International Phone Storage
+- **Severity**: Medium (P2)
+- **Test Steps**:
+  1. Insert user with email `Resident.Owner@Example.COM`.
+  2. Attempt inserting second user with email `resident.owner@example.com`.
+  3. Insert valid E.164 numbers: `+919876543210` (India), `+14155552671` (US), `+971501234567` (UAE).
+  4. Attempt inserting invalid phone: `9876543210` (missing leading `+`), `+91 98765-43210` (unstripped spaces/dashes), `+910987654321` (leading zero).
+- **Expected Result**:
+  - Step 2 fails with `23505 unique_violation` (CITEXT enforces case-insensitive uniqueness without lowercase indexing functions).
+  - Step 3 succeeds for all valid E.164 formats.
+  - Step 4 fails regex format constraint `CHECK (phone_e164 ~ '^\+[1-9][0-9]{7,14}$')`.
+
+---
+
+### 12.2 Supabase Row-Level Security (RLS) & Multi-Tenant Isolation Tests
+
+#### TC-DB-005: Cross-Tenant Data Leakage Prevention under RLS
+- **Component**: Supabase PostgreSQL RLS Policies (`society_isolation_policy`)
+- **Severity**: Critical (P0)
+- **Preconditions**:
+  - Society A (`Prestige Greenwoods`, id: `soc_prestige_greenwoods`) has 10 units, 45 invoices.
+  - Society B (`Sobha Windsor`, id: `soc_sobha_windsor`) has 8 units, 30 invoices.
+  - User `usr_resident_a` is an approved resident of Society A.
+- **Step-by-Step Test Steps**:
+  1. Open authenticated Supabase connection as `usr_resident_a` with JWT:
+     ```json
+     { "sub": "usr_resident_a", "app_metadata": { "society_id": "soc_prestige_greenwoods" } }
+     ```
+  2. Execute query: `SELECT * FROM units;`.
+  3. Execute explicit cross-tenant query: `SELECT * FROM units WHERE society_id = 'soc_sobha_windsor';`.
+  4. Attempt cross-tenant update: `UPDATE units SET occupancy_status = 'VACANT' WHERE society_id = 'soc_sobha_windsor';`.
+- **Expected Result**:
+  - Step 2 returns ONLY the 10 units belonging to Society A.
+  - Step 3 returns `0 rows` (database engine filters out unauthorized tenant rows silently).
+  - Step 4 updates `0 rows` with no errors, completely isolated from Society B.
+
+#### TC-DB-006: Resident Unit Data Confinement under RLS
+- **Component**: Supabase RLS Policy (`invoices_resident_read`)
+- **Severity**: Critical (P0)
+- **Preconditions**:
+  - User `usr_resident_a` lives in Flat `A-1204` (`unit_alpha_1204`).
+  - Peer User `usr_resident_b` lives in Flat `A-1205` (`unit_alpha_1205`).
+- **Step-by-Step Test Steps**:
+  1. Authenticate as `usr_resident_a`.
+  2. Execute query: `SELECT * FROM invoices;`.
+  3. Execute targeted probe: `SELECT * FROM invoices WHERE unit_id = 'unit_alpha_1205';`.
+  4. Attempt marking peer's invoice as paid: `UPDATE invoices SET status = 'PAID' WHERE unit_id = 'unit_alpha_1205';`.
+- **Expected Result**:
+  - Step 2 returns only invoices where `unit_id = 'unit_alpha_1204'`.
+  - Step 3 returns `0 rows`.
+  - Step 4 returns `0 rows updated`. Financial privacy between neighbors is 100% preserved.
+
+#### TC-DB-007: Guard Gate Privilege Scoping under RLS
+- **Component**: Supabase RLS Policy (`visitor_sessions_guard_access`)
+- **Severity**: High (P1)
+- **Preconditions**: User `usr_guard_01` is assigned `SECURITY_GUARD` role at North Gate of Society A.
+- **Step-by-Step Test Steps**:
+  1. Authenticate as `usr_guard_01`.
+  2. Execute: `SELECT * FROM visitor_sessions WHERE society_id = 'soc_prestige_greenwoods';`.
+  3. Attempt inserting new visitor session at the gate barrier:
+     ```sql
+     INSERT INTO visitor_sessions (society_id, unit_id, visitor_name, visitor_type, status)
+     VALUES ('soc_prestige_greenwoods', 'unit_alpha_1204', 'Amazon Courier', 'DELIVERY', 'PENDING');
+     ```
+  4. Attempt reading society general ledger: `SELECT * FROM accounts;` and `SELECT * FROM ledger_transactions;`.
+- **Expected Result**:
+  - Steps 2 & 3 succeed (Guards have read/write access to visitor passes for their assigned society).
+  - Step 4 returns `0 rows` or throws `42501 permission_denied`. Security personnel have zero visibility into society bank accounts, revenue, or dues.
+
+#### TC-DB-008: Unverified Applicant Confinement at DB Level
+- **Component**: Supabase RLS Policy on Incomplete KYC
+- **Severity**: Critical (P0)
+- **Preconditions**: User `usr_applicant_01` has authenticated via phone OTP but `kyc_status` is `PENDING_VERIFICATION`.
+- **Step-by-Step Test Steps**:
+  1. Authenticate as `usr_applicant_01`.
+  2. Attempt querying gate visitors: `SELECT * FROM visitor_sessions;`.
+  3. Attempt querying maintenance invoices: `SELECT * FROM invoices;`.
+  4. Query own profile and KYC documents: `SELECT * FROM users WHERE id = auth.uid();` and `SELECT * FROM kyc_documents WHERE user_id = auth.uid();`.
+- **Expected Result**:
+  - Steps 2 & 3 return `0 rows` (strict confinement; operational tables are sealed until approval).
+  - Step 4 returns applicant's profile and pending KYC records.
+
+---
+
+### 12.3 Trigger Automation & Function Tests
+
+#### TC-DB-009: Supabase Auth Sync Trigger (`on_auth_user_created` / `handle_new_user()`)
+- **Component**: PostgreSQL Trigger Function `public.handle_new_user()`
+- **Severity**: Critical (P0)
+- **Corner Cases Evaluated**:
+  1. Indian mobile phone with `+91` code.
+  2. International phone with country code: US (`+1`), UAE (`+971`), UK (`+44`).
+  3. Missing optional metadata (full name falls back to `'Resident Applicant'`).
+  4. Special characters in applicant name (e.g. `O'Connor`, `Avinash & Aditi`).
+- **Step-by-Step Test Steps**:
+  1. Insert record into `auth.users`:
+     ```sql
+     INSERT INTO auth.users (id, phone, raw_user_meta_data)
+     VALUES (
+         'c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c',
+         '+919876543210',
+         '{"full_name": "Avinash O''Connor", "country_code": "+91", "national_number": "9876543210"}'::jsonb
+     );
+     ```
+  2. Query `SELECT * FROM public.users WHERE id = 'c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c';`.
+- **Expected Result**:
+  - Exactly 1 record created in `public.users`.
+  - `phone_e164` = `+919876543210`.
+  - `full_name` = `Avinash O'Connor`.
+  - `kyc_status` defaults to `UNREGISTERED`.
+  - `is_active` defaults to `TRUE`.
+
+#### TC-DB-010: Auth Trigger Conflict Handling & Idempotency
+- **Component**: Trigger Function Conflict Resolution (`ON CONFLICT (id) DO UPDATE`)
+- **Severity**: High (P1)
+- **Test Steps**:
+  1. Fire trigger with an existing user ID and updated phone number.
+- **Expected Result**:
+  - Database executes `DO UPDATE` without throwing duplicate key error.
+  - Profile timestamps (`updated_at`) updated; primary key remains stable.
+
+---
+
+### 12.4 ACID Financial Transactions & Concurrency Race Conditions
+
+#### TC-DB-011: Double-Entry General Ledger Zero-Sum Invariant with Mid-Transaction Abort
+- **Component**: PostgreSQL Transaction Isolation (Serializable / Read Committed)
+- **Severity**: Critical (P0)
+- **Corner Cases Evaluated**:
+  1. Sum of debits != sum of credits.
+  2. Transaction fails midway (e.g., division by zero or constraint check failure on line 3).
+- **Step-by-Step Test Steps**:
+  1. Open transaction block:
+     ```sql
+     BEGIN;
+     INSERT INTO ledger_transactions (id, society_id, transaction_date, description)
+     VALUES ('tx_test_01', 'soc_prestige_greenwoods', CURRENT_DATE, 'Maintenance Bill Settlement');
+     
+     -- Line 1: Debit Bank $120.00
+     INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount)
+     VALUES ('tx_test_01', 'acc_bank_hdfc', 'DEBIT', 120.00);
+     
+     -- Line 2: Credit Maintenance Income $100.00
+     INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount)
+     VALUES ('tx_test_01', 'acc_maint_income', 'CREDIT', 100.00);
+     
+     -- Line 3: Erroneous line with negative amount (triggers CHECK constraint violation)
+     INSERT INTO ledger_entries (transaction_id, account_id, entry_type, amount)
+     VALUES ('tx_test_01', 'acc_gst_output', 'CREDIT', -20.00);
+     COMMIT;
+     ```
+  2. Query `SELECT * FROM ledger_transactions WHERE id = 'tx_test_01';` and `SELECT * FROM ledger_entries WHERE transaction_id = 'tx_test_01';`.
+- **Expected Result**:
+  - Entire transaction aborts and rolls back atomically.
+  - Step 2 returns `0 rows` for both header and lines. No partial debit/credit entries exist in the database.
+
+#### TC-DB-012: High-Concurrency Amenity Slot Booking Race Condition
+- **Component**: Database Exclusion / Composite Unique Constraint (`amenity_id, booking_start, booking_end`)
+- **Severity**: Critical (P0)
+- **Preconditions**: Badminton Court Slot `2026-11-15 18:00:00 to 19:00:00` is vacant.
+- **Step-by-Step Test Steps**:
+  1. Open 10 concurrent database sessions via connection pooler.
+  2. All 10 sessions simultaneously execute:
+     ```sql
+     INSERT INTO amenity_bookings (amenity_id, unit_id, user_id, booking_start, booking_end, total_fee, deposit_amount)
+     VALUES ('amen_badminton_01', 'unit_101', 'usr_resident_a', '2026-11-15 18:00:00+00', '2026-11-15 19:00:00+00', 100, 0);
+     ```
+- **Expected Result**:
+  - Exactly 1 session succeeds with `INSERT 0 1`.
+  - Remaining 9 sessions fail immediately with `23505 unique_violation`.
+  - Database contains exactly 1 booking record; zero double-booking occurrences.
+
+#### TC-DB-013: Virtual Account Number (VAN) Double-Credit Idempotency
+- **Component**: Banking Webhook Processor & Idempotency Key Table
+- **Severity**: Critical (P0)
+- **Preconditions**: Bank sends payment webhook for Bank UTR `HDFCN26310884912`.
+- **Step-by-Step Test Steps**:
+  1. Inject bank webhook payload with UTR `HDFCN26310884912` for $120.00.
+  2. Replay identical webhook payload 150 ms later (simulating network retry from bank).
+- **Expected Result**:
+  - First request processes receipt and posts ledger entries.
+  - Second request triggers unique constraint on `reference_number` or idempotency table; returns HTTP `200 OK` with cached response.
+  - Account ledger shows exactly one credit of $120.00.
+
+---
+
+### 12.5 Data Retention & Compliance Testing
+
+#### TC-DB-014: DPDPA 2023 90-Day Visitor Facial Photo Auto-Purge Worker Boundary
+- **Component**: Scheduled Retention Purge Worker / Storage Cleaner
+- **Severity**: High (P1)
+- **Preconditions**:
+  - Record A: Visitor session created 91 days ago with `photo_url = 'supabase/storage/v1/visitor-photos/session_91.jpg'`.
+  - Record B: Visitor session created 89 days ago with `photo_url = 'supabase/storage/v1/visitor-photos/session_89.jpg'`.
+  - Record C: Visitor session created 92 days ago with `photo_url = NULL` (already purged).
+- **Step-by-Step Test Steps**:
+  1. Trigger purge procedure:
+     ```sql
+     SELECT public.purge_expired_visitor_photos(90);
+     ```
+  2. Inspect Record A: Verify `photo_url` is updated to `NULL` and file deleted from `visitor-photos` Supabase storage bucket.
+  3. Inspect Record B: Verify `photo_url` is preserved and file remains in storage.
+  4. Inspect metadata: Verify visitor arrival timestamp, visitor name, vehicle number, and flat destination remain intact for security logs.
+- **Expected Result**:
+  - Record A photo is permanently erased in compliance with DPDPA 2023 Section 8.
+  - Record B photo remains fully accessible.
+  - Zero disruption to society visitor statistics or audit trails.
+
+---
+
+### 12.6 Production-Grade Sample Datasets & Test Fixtures
+
+Below is the comprehensive SQL fixture dataset representing real-world societies, international residents, gate operations, double-entry financial ledgers, and adversarial test inputs.
+
+```sql
+-- ============================================================================
+-- FIXTURE SET 1: SOCIETIES & PROPERTY HIERARCHY
+-- ============================================================================
+
+INSERT INTO societies (id, name, code, address_street, city, state, postal_code, country, van_bank_prefix, settings)
+VALUES
+(
+    'soc_prestige_greenwoods',
+    'Prestige Greenwoods',
+    'BLR-GRN-01',
+    'Outer Ring Road, Bellandur',
+    'Bangalore',
+    'Karnataka',
+    '560103',
+    'IN',
+    'CHOLDR',
+    '{"visitor_photo_required": true, "overstay_alert_minutes": 30, "auto_purge_visitor_days": 90, "late_payment_penalty_rate_annual": 18.0}'
+),
+(
+    'soc_sobha_windsor',
+    'Sobha Windsor',
+    'BLR-WND-02',
+    'ECC Road, Whitefield',
+    'Bangalore',
+    'Karnataka',
+    '560066',
+    'IN',
+    'SOBHAW',
+    '{"visitor_photo_required": true, "overstay_alert_minutes": 45, "auto_purge_visitor_days": 90, "late_payment_penalty_rate_annual": 15.0}'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO blocks (id, society_id, name, total_floors)
+VALUES
+('blk_green_alpha', 'soc_prestige_greenwoods', 'Tower Alpha', 14),
+('blk_green_beta',  'soc_prestige_greenwoods', 'Tower Beta',  14),
+('blk_wind_elm',    'soc_sobha_windsor',      'Elm Block',   18)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO units (id, society_id, block_id, unit_number, super_built_up_area, carpet_area, occupancy_status, virtual_account_number)
+VALUES
+('unit_alpha_101',  'soc_prestige_greenwoods', 'blk_green_alpha', '101',  1250.00,  980.00, 'OWNER_OCCUPIED',  'CHOLDRBLR101'),
+('unit_alpha_1204', 'soc_prestige_greenwoods', 'blk_green_alpha', '1204', 1500.00, 1180.00, 'OWNER_OCCUPIED',  'CHOLDRBLR1204'),
+('unit_alpha_1205', 'soc_prestige_greenwoods', 'blk_green_alpha', '1205', 1500.00, 1180.00, 'TENANT_OCCUPIED', 'CHOLDRBLR1205'),
+('unit_beta_302',   'soc_prestige_greenwoods', 'blk_green_beta',  '302',  1850.00, 1420.00, 'TENANT_OCCUPIED', 'CHOLDRBLR302'),
+('unit_beta_PH1',   'soc_prestige_greenwoods', 'blk_green_beta',  'PH1',  3200.00, 2600.00, 'VACANT',          'CHOLDRBLRPH1'),
+('unit_wind_504',   'soc_sobha_windsor',      'blk_wind_elm',    '504',  1400.00, 1100.00, 'OWNER_OCCUPIED',  'SOBHAWBLR504')
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- FIXTURE SET 2: DIVERSE USERS (DOMESTIC & INTERNATIONAL RESIDENTS)
+-- ============================================================================
+
+INSERT INTO users (id, country_code, national_number, phone_e164, email, full_name, kyc_status, is_active)
+VALUES
+-- Approved Owner (India)
+('usr_avinash_owner', '+91', '9876543210', '+919876543210', 'avinash.owner@example.com', 'Avinash Aradya', 'APPROVED', TRUE),
+-- Approved Tenant (India)
+('usr_rahul_tenant',  '+91', '9123456780', '+919123456780', 'rahul.tenant@example.com',  'Rahul Sharma',  'APPROVED', TRUE),
+-- NRI Landlord (United States)
+('usr_priya_nri',     '+1',  '4155552671', '+14155552671', 'priya.nri@example.com',     'Priya Nair',    'APPROVED', TRUE),
+-- Overseas Investor (UAE)
+('usr_tariq_uae',     '+971','501234567',  '+971501234567','tariq.uae@example.com',     'Tariq Al-Mansoor','APPROVED', TRUE),
+-- Applicant in Review Queue (India)
+('usr_applicant_01',  '+91', '9988776655', '+919988776655', 'applicant1@example.com',   'Aditi Rao',     'PENDING_VERIFICATION', TRUE),
+-- Security Guard (India)
+('usr_guard_ramesh',  '+91', '9811122233', '+919811122233', 'guard.ramesh@security.org','Ramesh Kumar',  'APPROVED', TRUE),
+-- Estate / Facility Manager (India)
+('usr_manager_rajesh','+91', '9844455566', '+919844455566', 'estate.manager@prestige.com','Rajesh Hegde','APPROVED', TRUE)
+ON CONFLICT (id) DO NOTHING;
+
+-- User Roles
+INSERT INTO user_roles (user_id, society_id, role)
+VALUES
+('usr_avinash_owner',  'soc_prestige_greenwoods', 'RESIDENT_OWNER'),
+('usr_rahul_tenant',   'soc_prestige_greenwoods', 'RESIDENT_TENANT'),
+('usr_priya_nri',      'soc_prestige_greenwoods', 'RESIDENT_OWNER'),
+('usr_guard_ramesh',   'soc_prestige_greenwoods', 'SECURITY_GUARD'),
+('usr_manager_rajesh', 'soc_prestige_greenwoods', 'FACILITY_MANAGER')
+ON CONFLICT DO NOTHING;
+
+-- Unit Members
+INSERT INTO unit_members (unit_id, society_id, user_id, member_type, is_primary_contact, approval_status)
+VALUES
+('unit_alpha_1204', 'soc_prestige_greenwoods', 'usr_avinash_owner', 'PRIMARY_OWNER', TRUE, 'APPROVED'),
+('unit_beta_302',   'soc_prestige_greenwoods', 'usr_rahul_tenant',  'TENANT',        TRUE, 'APPROVED'),
+('unit_alpha_1205', 'soc_prestige_greenwoods', 'usr_priya_nri',     'PRIMARY_OWNER', TRUE, 'APPROVED')
+ON CONFLICT DO NOTHING;
+
+-- ============================================================================
+-- FIXTURE SET 3: KYC DOCUMENTS (PENDING & APPROVED)
+-- ============================================================================
+
+INSERT INTO kyc_documents (id, user_id, society_id, unit_id, document_category, document_type, document_identifier_masked, file_url, file_sha256, file_size_bytes, mime_type, status, verified_by)
+VALUES
+(
+    'kyc_doc_approved_01',
+    'usr_avinash_owner',
+    'soc_prestige_greenwoods',
+    'unit_alpha_1204',
+    'GOVT_ID',
+    'AADHAAR',
+    'XXXX-XXXX-8821',
+    'kyc-documents/usr_avinash_owner/aadhaar_front.pdf',
+    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    1048576,
+    'application/pdf',
+    'VERIFIED',
+    'usr_manager_rajesh'
+),
+(
+    'kyc_doc_pending_02',
+    'usr_applicant_01',
+    'soc_prestige_greenwoods',
+    'unit_alpha_101',
+    'PROPERTY_PROOF',
+    'SALE_DEED',
+    'REG-BLR-2025-9921',
+    'kyc-documents/usr_applicant_01/sale_deed.pdf',
+    '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b',
+    4194304,
+    'application/pdf',
+    'PENDING',
+    NULL
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- FIXTURE SET 4: GATEKEEPER VISITOR SESSIONS & OVERSTAY
+-- ============================================================================
+
+INSERT INTO visitor_sessions (id, society_id, unit_id, visitor_type, visitor_name, visitor_phone, delivery_company, passcode, status, is_pre_approved, approved_by_user_id, guard_id, checked_in_at)
+VALUES
+(
+    'vissess_active_guest',
+    'soc_prestige_greenwoods',
+    'unit_alpha_1204',
+    'GUEST',
+    'Vikram Seth',
+    '+919845012345',
+    NULL,
+    '491823',
+    'CHECKED_IN',
+    TRUE,
+    'usr_avinash_owner',
+    'usr_guard_ramesh',
+    NOW() - INTERVAL '15 minutes'
+),
+(
+    'vissess_overstay_delivery',
+    'soc_prestige_greenwoods',
+    'unit_alpha_1204',
+    'DELIVERY',
+    'Ramesh (Swiggy)',
+    '+919731098765',
+    'Swiggy',
+    NULL,
+    'CHECKED_IN',
+    FALSE,
+    'usr_avinash_owner',
+    'usr_guard_ramesh',
+    NOW() - INTERVAL '48 minutes' -- Exceeds 30-min overstay threshold
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
+-- FIXTURE SET 5: DOUBLE-ENTRY GENERAL LEDGER & INVOICES
+-- ============================================================================
+
+INSERT INTO accounts (id, society_id, account_code, account_name, account_type)
+VALUES
+('acc_bank_hdfc',    'soc_prestige_greenwoods', '1010', 'HDFC Society Operational Current A/c', 'ASSET'),
+('acc_maint_receiv', 'soc_prestige_greenwoods', '1120', 'Maintenance Accounts Receivable',      'ASSET'),
+('acc_maint_income', 'soc_prestige_greenwoods', '4010', 'Member Maintenance Charges Income',     'REVENUE'),
+('acc_gst_output',   'soc_prestige_greenwoods', '2050', 'GST Output Liability (18%)',            'LIABILITY')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO invoices (id, society_id, unit_id, invoice_number, bill_date, due_date, subtotal_amount, tax_amount, total_amount, amount_paid, status)
+VALUES
+(
+    'inv_nov_alpha_1204',
+    'soc_prestige_greenwoods',
+    'unit_alpha_1204',
+    'INV-202611-A1204',
+    '2026-11-01',
+    '2026-11-15',
+    101.69,
+    18.31,
+    120.00,
+    0.00,
+    'ISSUED'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Double-Entry Journal for Invoice Issuance
+INSERT INTO ledger_transactions (id, society_id, transaction_date, reference_number, description, posted_by)
+VALUES
+(
+    'tx_journal_inv_1204',
+    'soc_prestige_greenwoods',
+    '2026-11-01',
+    'INV-202611-A1204',
+    'Monthly Maintenance Billing - Flat A-1204',
+    'usr_manager_rajesh'
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO ledger_entries (id, transaction_id, account_id, entry_type, amount, unit_id)
+VALUES
+-- Debit: Accounts Receivable $120.00
+('entry_dr_ar_1204',  'tx_journal_inv_1204', 'acc_maint_receiv', 'DEBIT',  120.00, 'unit_alpha_1204'),
+-- Credit: Revenue $101.69
+('entry_cr_rev_1204', 'tx_journal_inv_1204', 'acc_maint_income', 'CREDIT', 101.69, 'unit_alpha_1204'),
+-- Credit: GST Payable $18.31
+('entry_cr_gst_1204', 'tx_journal_inv_1204', 'acc_gst_output',   'CREDIT',  18.31, 'unit_alpha_1204')
+ON CONFLICT (id) DO NOTHING;
+
+-- Verification of Zero-Sum Invariant
+-- SELECT SUM(CASE WHEN entry_type = 'DEBIT' THEN amount ELSE -amount END) FROM ledger_entries WHERE transaction_id = 'tx_journal_inv_1204';
+-- Invariant check must yield exactly 0.00
+```
+
+---
+
+## 13. Test Execution Sign-Off Matrix
 
 | Test Suite / Category | Total Test Cases | Automated (CI/CD) | Manual / Hardware Test | Blocking Gate |
 |---|---|---|---|---|
@@ -649,6 +1150,8 @@ This module contains adversarial stress tests designed to actively attempt break
 | **Module 8: Helpdesk & SLA Escalation** | 2 Cases | 2 Automated | 0 | PR Merge |
 | **Module 9: CRED UI & Slide Physics** | 4 Cases | 2 Automated | 2 Haptic / Lux | Release Candidate |
 | **Module 10: Adversarial Breaking Tests**| 8 Cases | 8 Automated | 0 | PR Merge |
-| **Module 11: NFR, Performance & Security**| 4 Cases | 3 Automated | 1 A11y Audit | Pre-Production |
-| **TOTAL** | **48 Cases** | **40 Automated (83%)**| **8 Hardware/Audit** | **Zero P0 Defect Policy** |
+| **Module 11: Backend Database & Supabase**| 14 Cases | 14 Automated | 0 | PR Merge |
+| **Module 12: NFR, Performance & Security**| 4 Cases | 3 Automated | 1 A11y Audit | Pre-Production |
+| **TOTAL** | **62 Cases** | **54 Automated (87%)**| **8 Hardware/Audit** | **Zero P0 Defect Policy** |
+
 
