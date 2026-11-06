@@ -35,11 +35,13 @@ The complete product, architectural, and engineering blueprint has been document
      - **Web**: Next.js (React 19 / TypeScript / Tailwind CSS) for Society Admin ERP Portal and Resident Web Portal.
    - Real-Time Intercom & Notification Mesh (WebRTC peer audio/video streaming, WebSocket event bus, VoIP Push, and telephony IVR fallback).
    - Offline-First Guard Synchronization Architecture (Local SQLite with encrypted storage, Outbox event queues, and delta-sync reconciliation).
-   - Multi-Tenant Data Tier (PostgreSQL with Row-Level Security, Redis Cluster, TimescaleDB, Cloudflare R2 / S3 storage).
+   - Multi-Tenant Data Tier & Supabase Architecture (Managed PostgreSQL 16 on Supabase project `ggzbyynthvxwkpdbjklf`, Row-Level Security, GoTrue Auth sync, Supabase Storage for encrypted KYC documents, Supavisor connection pooling on port 6543, and Supabase Realtime).
    - Security, Zero-Trust Privacy, Phone Number Masking, and DPDPA/GDPR compliance.
 
 3. 🎨 **[design.md](file:///Users/avinasharadya88/Documents/CommunityHolder/design.md)** — **System & Technical Design**:
-   - Entity-Relationship Diagram (ERD) & production PostgreSQL 16 DDL schemas (including `users`, `otp_verifications`, `kyc_documents`, and `unit_members`).
+   - Entity-Relationship Diagram (ERD) & Supabase PostgreSQL 16 DDL schemas (including `users`, `auth.users` sync triggers, `otp_verifications`, `kyc_documents`, and `unit_members`).
+   - Supabase Row-Level Security (RLS) policies for user self-access, guard gate permissions, and multi-tenant society isolation.
+   - Supabase Storage bucket configurations (`kyc-documents`, `visitor-photos`, `invoice-assets`) and Realtime publications.
    - Business State Machines (First-Time Registration & KYC Approval, Visitor Pass lifecycle, Maintenance Invoice lifecycle, Helpdesk ticket SLA escalation).
    - REST, WebSocket & Sync API contracts (Phone OTP request/verify, KYC upload presigned URLs, Admin review queue & decision, Gatekeeper check-ins).
    - UI/UX Design System: Color tokens, typography hierarchy, screen layout wireframes for mobile onboarding, resident app, and admin split-screen verification workspace.

@@ -12,10 +12,11 @@
 
 ## 1. Domain Entity Relationship & Data Models
 
-The following ER diagram maps the primary entities across society hierarchy, security, ERP, and operations:
+The following ER diagram maps the primary entities across society hierarchy, security, ERP, operations, and Supabase identity synchronization:
 
 ```mermaid
 erDiagram
+    AUTH_USER ||--|| USER : synchronizes_with
     SOCIETY ||--o{ BLOCK : contains
     BLOCK ||--o{ UNIT : contains
     UNIT ||--o{ UNIT_MEMBER : assigns
@@ -51,13 +52,55 @@ erDiagram
 
 ---
 
-## 2. Core Relational Database DDL (PostgreSQL 16)
+## 2. Core Relational Database DDL & Supabase Architecture (Project: ggzbyynthvxwkpdbjklf)
+
+All user records, society data, access control policies, and double-entry financial journals are stored in the managed **Supabase PostgreSQL 16** cloud database:
+
+### 2.1 Supabase Project Infrastructure Specifications
+
+| Parameter | Configuration Value | Usage |
+|---|---|---|
+| **Supabase Project URL** | `https://ggzbyynthvxwkpdbjklf.supabase.co` | Main REST/GraphQL/Storage Gateway |
+| **Supabase Management Dashboard** | [`https://supabase.com/dashboard/project/ggzbyynthvxwkpdbjklf`](https://supabase.com/dashboard/project/ggzbyynthvxwkpdbjklf) | Database Administration Console |
+| **Project Reference ID** | `ggzbyynthvxwkpdbjklf` | Multi-Tenant Cloud Instance ID |
+| **Database Host** | `db.ggzbyynthvxwkpdbjklf.supabase.co` | Direct PostgreSQL Engine (Port 5432) |
+| **Connection Pooling (Supavisor)** | `aws-0-ap-south-1.pooler.supabase.com:6543` | Transaction Mode Pooler for API backend |
+| **PostgreSQL Version** | 16.x (Ubuntu 22.04 LTS) | ACID transactional database engine |
+| **Primary Schemas** | `public` (App Data), `auth` (Supabase Identity), `storage` (Document Metadata) | Logical domain separation |
+| **Realtime Channel** | `wss://ggzbyynthvxwkpdbjklf.supabase.co/realtime/v1/websocket` | CDC broadcast of visitor & gate events |
 
 ```sql
--- Enable necessary extensions
+-- Enable necessary PostgreSQL extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "citext";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ============================================================================
+-- 0. SUPABASE AUTH TO PUBLIC USER PROFILE SYNCHRONIZATION
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.users (id, phone_e164, country_code, national_number, full_name, kyc_status)
+    VALUES (
+        NEW.id,
+        NEW.phone,
+        COALESCE(NEW.raw_user_meta_data->>'country_code', '+91'),
+        COALESCE(NEW.raw_user_meta_data->>'national_number', SUBSTRING(NEW.phone FROM 4)),
+        COALESCE(NEW.raw_user_meta_data->>'full_name', 'Resident Applicant'),
+        'UNREGISTERED'
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET phone_e164 = EXCLUDED.phone_e164,
+        updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================================
 -- 1. SOCIETY & PROPERTY HIERARCHY
@@ -112,7 +155,7 @@ CREATE TABLE units (
 -- ============================================================================
 
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     country_code VARCHAR(8) NOT NULL DEFAULT '+91', -- e.g. '+91', '+1', '+44', '+971'
     national_number VARCHAR(20) NOT NULL, -- e.g. '9876543210'
     phone_e164 VARCHAR(30) NOT NULL UNIQUE, -- E.164 normalized: '+919876543210'
@@ -311,7 +354,248 @@ CREATE TABLE amenity_bookings (
     status VARCHAR(30) NOT NULL DEFAULT 'CONFIRMED', -- CONFIRMED, COMPLETED, CANCELLED, REFUNDED
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ============================================================================
+-- 6. SUPABASE ROW-LEVEL SECURITY (RLS) POLICIES
+-- ============================================================================
+
+-- Enable RLS across all application tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kyc_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE unit_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE societies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blocks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE units ENABLE ROW LEVEL SECURITY;
+ALTER TABLE visitor_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE helpdesk_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE amenities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE amenity_bookings ENABLE ROW LEVEL SECURITY;
+
+-- Helper function to check if current user is an Estate Manager or Admin for a given society
+CREATE OR REPLACE FUNCTION public.is_society_admin_or_manager(target_society_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN EXISTS (
+        SELECT 1 FROM public.user_roles ur
+        WHERE ur.user_id = auth.uid()
+          AND ur.society_id = target_society_id
+          AND ur.role IN ('SOCIETY_ADMIN', 'FACILITY_MANAGER', 'ESTATE_MANAGER')
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 1. USERS TABLE POLICIES
+-- Self-service: Users can view and update their own profile
+CREATE POLICY users_self_read ON public.users
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY users_self_update ON public.users
+    FOR UPDATE USING (auth.uid() = id);
+
+-- Admins and Managers can read profiles of users in their societies
+CREATE POLICY users_admin_read ON public.users
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.unit_members um
+            WHERE um.user_id = public.users.id
+              AND public.is_society_admin_or_manager(um.society_id)
+        )
+    );
+
+-- 2. KYC DOCUMENTS POLICIES
+-- Applicant can read and upload their own documents
+CREATE POLICY kyc_documents_self_read ON public.kyc_documents
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY kyc_documents_self_insert ON public.kyc_documents
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Estate Managers & Admins can read all KYC documents in their society
+CREATE POLICY kyc_documents_manager_read ON public.kyc_documents
+    FOR SELECT USING (public.is_society_admin_or_manager(society_id));
+
+-- Only Estate Managers & Admins can update verification status
+CREATE POLICY kyc_documents_manager_update ON public.kyc_documents
+    FOR UPDATE USING (public.is_society_admin_or_manager(society_id));
+
+-- 3. UNIT MEMBERS POLICIES
+-- Residents can view members of their own unit
+CREATE POLICY unit_members_self_read ON public.unit_members
+    FOR SELECT USING (auth.uid() = user_id);
+
+-- Admins can manage all unit members within their society
+CREATE POLICY unit_members_admin_all ON public.unit_members
+    FOR ALL USING (public.is_society_admin_or_manager(society_id));
+
+-- 4. VISITOR SESSIONS POLICIES
+-- Residents can view and decide visitors arriving for their unit
+CREATE POLICY visitor_sessions_resident_access ON public.visitor_sessions
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.unit_members um
+            WHERE um.unit_id = public.visitor_sessions.unit_id
+              AND um.user_id = auth.uid()
+              AND um.approval_status = 'APPROVED'
+        )
+    );
+
+-- Security Guards can view, create, and update visitors for their society
+CREATE POLICY visitor_sessions_guard_access ON public.visitor_sessions
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.user_roles ur
+            WHERE ur.user_id = auth.uid()
+              AND ur.society_id = public.visitor_sessions.society_id
+              AND ur.role IN ('SECURITY_GUARD', 'SOCIETY_ADMIN', 'FACILITY_MANAGER')
+        )
+    );
+
+-- 5. INVOICES & FINANCIAL LEDGER POLICIES
+-- Residents can view invoices billed to their unit
+CREATE POLICY invoices_resident_read ON public.invoices
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM public.unit_members um
+            WHERE um.unit_id = public.invoices.unit_id
+              AND um.user_id = auth.uid()
+              AND um.approval_status = 'APPROVED'
+        )
+    );
+
+-- Accountants and Admins have full access to society invoices and general ledger
+CREATE POLICY invoices_admin_all ON public.invoices
+    FOR ALL USING (public.is_society_admin_or_manager(society_id));
+
+CREATE POLICY ledger_transactions_admin_all ON public.ledger_transactions
+    FOR ALL USING (public.is_society_admin_or_manager(society_id));
+
+CREATE POLICY ledger_entries_admin_all ON public.ledger_entries
+    FOR ALL USING (
+        EXISTS (
+            SELECT 1 FROM public.ledger_transactions lt
+            WHERE lt.id = public.ledger_entries.transaction_id
+              AND public.is_society_admin_or_manager(lt.society_id)
+        )
+    );
+
+-- 6. HELPDESK TICKETS POLICIES
+-- Users can manage tickets they raised or tickets for their unit
+CREATE POLICY helpdesk_resident_access ON public.helpdesk_tickets
+    FOR ALL USING (
+        user_id = auth.uid() OR
+        EXISTS (
+            SELECT 1 FROM public.unit_members um
+            WHERE um.unit_id = public.helpdesk_tickets.unit_id
+              AND um.user_id = auth.uid()
+        )
+    );
+
+-- Facility staff and Admins can view and update all society tickets
+CREATE POLICY helpdesk_staff_access ON public.helpdesk_tickets
+    FOR ALL USING (public.is_society_admin_or_manager(society_id));
 ```
+
+### 2.2 Supabase Storage Buckets & Policies
+
+CommunityHolder provisions 3 private encrypted buckets in Supabase Storage:
+
+1. **`kyc-documents`**:
+   - `public`: `false` (Strictly private).
+   - `file_size_limit`: `10485760` (10 MB).
+   - `allowed_mime_types`: `["application/pdf", "image/jpeg", "image/png"]`.
+   - **Upload Policy**: Users can upload files into folder matching their `auth.uid()`:
+     ```sql
+     CREATE POLICY "kyc_user_upload" ON storage.objects
+         FOR INSERT WITH CHECK (
+             bucket_id = 'kyc-documents' AND
+             (storage.foldername(name))[1] = auth.uid()::text
+         );
+     ```
+   - **Download Policy**: Signed URLs only. Accessible by the uploader and society Estate Managers.
+
+2. **`visitor-photos`**:
+   - `public`: `false`.
+   - `file_size_limit`: `5242880` (5 MB).
+   - `allowed_mime_types`: `["image/jpeg", "image/png"]`.
+   - **Policy**: Guard tablets can insert visitor photos; residents can read photos linked to their unit's visitor sessions.
+   - **DPDPA Retention**: Automatic database scheduled job deletes files older than 90 days.
+
+3. **`invoice-assets`**:
+   - `public`: `false`.
+   - `file_size_limit`: `5242880` (5 MB).
+   - `allowed_mime_types`: `["application/pdf"]`.
+   - **Policy**: System service role writes generated invoice PDFs; unit members and accountants can download via signed URLs.
+
+### 2.3 Supabase Realtime Subscriptions & Publications
+
+To enable instant intercom signaling, guard-to-resident gate rings, and dues updates:
+
+```sql
+-- Enable logical replication on transactional tables
+ALTER PUBLICATION supabase_realtime ADD TABLE public.visitor_sessions;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.helpdesk_tickets;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.invoices;
+```
+
+Client apps listen for changes via the Supabase Client SDK:
+
+```typescript
+// Example: Resident Mobile App listening for gate arrivals
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const visitorChannel = supabase
+  .channel('gatekeeper-visitor-rings')
+  .on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'visitor_sessions',
+      filter: `unit_id=eq.${currentUnitId}`,
+    },
+    (payload) => {
+      console.log('Incoming Visitor Ring:', payload.new);
+      triggerIntercomRingModal(payload.new);
+    }
+  )
+  .subscribe();
+```
+
+### 2.4 Supabase Connection Topology & Configuration
+
+```
++----------------------------------------------------------------------------------------------------+
+| Application Layer (Express API / Next.js Web / Flutter Mobile)                                     |
++----------------------------------------------------------------------------------------------------+
+       |                                       |                                      |
+       | REST / GraphQL (Port 443)             | High-Concurrency Pool (Port 6543)    | Direct DDL (Port 5432)
+       v                                       v                                      v
++----------------------------------------------------------------------------------------------------+
+| Supabase Cloud Project: ggzbyynthvxwkpdbjklf                                                       |
+| - Kong API Gateway: https://ggzbyynthvxwkpdbjklf.supabase.co                                       |
+| - Supavisor Pooler: aws-0-ap-south-1.pooler.supabase.com:6543 (Transaction Mode)                   |
+| - Primary PostgreSQL 16 DB: db.ggzbyynthvxwkpdbjklf.supabase.co:5432                               |
+| - GoTrue Auth Engine: Passwordless E.164 SMS OTP & JWT Verification                                |
+| - Supabase Storage: Encrypted buckets (kyc-documents, visitor-photos, invoice-assets)              |
+| - Realtime Engine: PostgreSQL CDC WebSocket Pub/Sub                                                |
++----------------------------------------------------------------------------------------------------+
+```
+
+#### Required Environment Variables Contract
+
+| Variable Name | Example / Format | Purpose |
+|---|---|---|
+| `SUPABASE_URL` | `https://ggzbyynthvxwkpdbjklf.supabase.co` | Supabase API & Gateway Root |
+| `SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5c...` | Public client token for mobile/web apps (respects RLS) |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5c...` | Privileged backend secret for administrative services |
+| `DATABASE_URL` | `postgresql://postgres.[REF]:[PASS]@aws-0-ap-south-1.pooler.supabase.com:6543/postgres?pgbouncer=true` | Pooled DB connection for API workers |
+| `DIRECT_URL` | `postgresql://postgres.[REF]:[PASS]@db.ggzbyynthvxwkpdbjklf.supabase.co:5432/postgres` | Direct connection for migrations & DDL |
 
 ---
 

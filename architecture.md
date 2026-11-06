@@ -43,12 +43,13 @@ flowchart TD
         D7["Governance & Social Service<br/>(Digital Notice Board, Voting, Forum)"]
     end
 
-    subgraph Data["Persistence & Storage Tier"]
-        E1[("PostgreSQL 16 Cluster<br/>Multi-Tenant RLS / Financial ACID")]
-        E2[("Redis 7.2 Cluster<br/>Distributed Locks, Cache, Pub/Sub")]
-        E3[("TimescaleDB<br/>Audit Trails, Guard Patrol, IoT Meters")]
-        E4[("OpenSearch / Meilisearch<br/>Global Directory & Transaction Index")]
-        E5[("S3 / Cloudflare R2<br/>Visitor Photos, Invoices, Attachments")]
+    subgraph Data["Persistence, Identity & Storage Tier (Supabase Managed Cloud - Ref: ggzbyynthvxwkpdbjklf)"]
+        E1[("Supabase PostgreSQL 16<br/>- Users, KYC, Core Directory<br/>- Multi-Tenant RLS by society_id<br/>- Double-Entry Financial ACID Ledger")]
+        E2["Supabase Auth (GoTrue)<br/>- Phone OTP & JWT Provider<br/>- auth.users <-> public.users Sync"]
+        E3["Supabase Realtime (CDC / WebSockets)<br/>- Gate Approval & Intercom Signals<br/>- Live Overstay & Parcel Events"]
+        E4["Supabase Storage (Encrypted Buckets)<br/>- kyc-documents (Private / Watermarked)<br/>- visitor-photos (90-day retention)<br/>- invoice-assets"]
+        E5["Supavisor Connection Pooler<br/>- Port 6543 (Transaction Mode)<br/>- Port 5432 (Session/Direct Mode)"]
+        E6[("Redis 7.2 Cluster<br/>Distributed Locks, Cache, Rate Limits")]
     end
 
     A1 & A2 & A3 & A4 --> B1 --> B2
@@ -57,6 +58,21 @@ flowchart TD
     Services --> RealTime
     Services --> Data
 ```
+
+### 1.1 Managed Database & Cloud Infrastructure (Supabase Project Instance)
+
+The persistent user data, society hierarchy, financial general ledger, and access tokens are managed via the dedicated Supabase cloud infrastructure:
+
+| Parameter | Configuration / Value | Description |
+|---|---|---|
+| **Supabase Project URL** | `https://ggzbyynthvxwkpdbjklf.supabase.co` | Main API Gateway and Storage Endpoint |
+| **Supabase Dashboard** | [`https://supabase.com/dashboard/project/ggzbyynthvxwkpdbjklf`](https://supabase.com/dashboard/project/ggzbyynthvxwkpdbjklf) | Administrative Management Console |
+| **Project Reference ID** | `ggzbyynthvxwkpdbjklf` | Unique multi-tenant cloud project identifier |
+| **Database Host** | `db.ggzbyynthvxwkpdbjklf.supabase.co` | Managed PostgreSQL 16 Relational Engine |
+| **Connection Pooling (Supavisor)** | `aws-0-ap-south-1.pooler.supabase.com:6543` | High-concurrency Transaction Pooling (Port 6543) |
+| **Direct DB Connection** | `db.ggzbyynthvxwkpdbjklf.supabase.co:5432` | Schema migrations, DDL, and administrative scripts |
+| **Realtime WebSocket Server** | `wss://ggzbyynthvxwkpdbjklf.supabase.co/realtime/v1/websocket` | CDC broadcast for gate ring & visitor events |
+| **Storage Engine** | Supabase Storage (S3 API compatible) | Dedicated encrypted buckets (`kyc-documents`, `visitor-photos`) |
 
 ---
 
@@ -100,67 +116,68 @@ sequenceDiagram
     actor U as Resident Applicant
     participant C as Mobile / Web Client
     participant G as API Gateway (Envoy)
-    participant I as Identity & Auth Service
-    participant R as Redis OTP Store
+    participant I as Identity & Auth Service (Supabase Auth / GoTrue)
+    participant DB as Supabase PostgreSQL (public.users)
     participant K as KYC Onboarding Service
-    participant S3 as Secure Document Storage (S3/R2)
+    participant S3 as Supabase Storage (kyc-documents Bucket)
     actor A as Admin / Estate / Facility Manager
 
-    Note over U,R: Phase 1: Mobile Phone + Country Code OTP Login
+    Note over U,DB: Phase 1: Mobile Phone + Country Code OTP Login
     U->>C: 1. Enter Country Code (+91 / Intl) & Phone Number
     C->>G: 2. POST /api/v1/auth/request-otp (E.164 phone)
-    G->>I: 3. Validate Format (libphonenumber) & Rate Limits
-    I->>R: 4. Store Cryptographic Salted Hash of OTP (TTL: 5 min)
-    I->>U: 5. Dispatch OTP via SMS (Twilio/Gupshup) / WhatsApp Fallback
-    U->>C: 6. Input 6-Digit OTP
-    C->>G: 7. POST /api/v1/auth/verify-otp
-    G->>I: 8. Compare Hash with Redis Store
-    I-->>C: 9. Return Session JWT (Role: APPLICANT, kyc_status: UNREGISTERED)
+    G->>I: 3. Validate Format (libphonenumber) & Dispatch OTP via Supabase Auth SMS Provider
+    I->>U: 4. Dispatch 6-Digit OTP via SMS (Twilio/MessageBird) / WhatsApp Fallback
+    U->>C: 5. Input 6-Digit OTP
+    C->>G: 6. POST /api/v1/auth/verify-otp
+    G->>I: 7. Verify OTP against Supabase Auth (auth.users)
+    I->>DB: 8. Trigger syncs/verifies record in public.users
+    I-->>C: 9. Return Session JWT (Role: APPLICANT, kyc_status: UNREGISTERED, sub: user_id)
 
     Note over U,S3: Phase 2: First-Time Registration & KYC Document Upload
     U->>C: 10. Select Society, Block, Unit & Role (Owner/Tenant)
-    C->>K: 11. Request Presigned Upload URLs (Govt ID + Property Proof)
-    K-->>C: 12. Return Presigned S3/R2 URLs with strict Content-Type & Hash locks
-    C->>S3: 13. Direct Client-to-S3 Upload with AES-256-GCM Server Encryption
-    C->>K: 14. Submit KYC Application (Doc S3 Keys + Metadata)
-    K->>K: 15. Update Account: kyc_status = PENDING_VERIFICATION
-    K-->>A: 16. Broadcast Real-Time Alert to Estate/Facility Manager Queue
+    C->>K: 11. Request Presigned Upload URLs for Supabase Storage
+    K-->>C: 12. Return Signed Upload URLs for kyc-documents bucket (Content-Type & Hash locked)
+    C->>S3: 13. Direct Client-to-Supabase Storage Upload (AES-256 Server Encryption)
+    C->>K: 14. Submit KYC Application (Metadata + Supabase Storage Object Keys)
+    K->>DB: 15. Insert into public.kyc_documents; update public.users (kyc_status = PENDING_VERIFICATION)
+    K-->>A: 16. Broadcast Real-Time Alert to Estate/Facility Manager Queue via Supabase Realtime
 
     Note over A,U: Phase 3: Manual Verification & Access Provisioning
     A->>K: 17. Open Pending Review Dashboard (Inspect ID & Title/Lease)
     alt Approved by Estate / Facility Manager
         A->>K: 18a. Click "Verify & Approve Access"
-        K->>I: 19a. Upgrade User Role (OWNER/TENANT), kyc_status = APPROVED
+        K->>DB: 19a. Upgrade User Role (OWNER/TENANT), set public.users kyc_status = APPROVED
         K->>U: 20a. Dispatch Push/SMS: "Access Approved! Welcome to your Community"
         Note over U: App unblocks full Gate, ERP & Community features
     else Rejected by Estate / Facility Manager
         A->>K: 18b. Select "Reject" + Mandatory Reason ("Blurred ID / Name mismatch")
-        K->>I: 19b. Set kyc_status = REJECTED (Attach rejection reason)
+        K->>DB: 19b. Set public.users kyc_status = REJECTED (Attach rejection reason)
         K->>U: 20b. Dispatch Alert with Rejection Reason & Re-upload Action
     end
 ```
 
 ### 3.1 Global Phone Number Ingestion & OTP Verification Pipeline
 1. **E.164 Normalization Engine**:
-   - Integrated with Google's `libphonenumber` across Flutter and backend microservices.
+   - Integrated with Google's `libphonenumber` across Flutter, Web, and backend microservices.
    - Parses, validates, and normalizes phone numbers against international carriers and dial plans:
      - **India (`+91`)**: Validates 10-digit mobile series starting with 6, 7, 8, 9.
      - **International Numbers**: Normalizes country calling code, national destination code (NDC), and subscriber number (SN) across US/Canada (`+1`), UK (`+44`), UAE (`+971`), Singapore (`+65`), Australia (`+61`), etc.
-2. **Cryptographic OTP Storage in Redis**:
-   - OTP codes are generated via `crypto.randomInt(100000, 999999)`.
-   - Never stored in plain text. Stored as `HMAC-SHA256(phone + otp, secret_key)` in Redis with a 300-second TTL.
-   - Brute-force throttling: Maximum 3 attempts per OTP generation; client IP and phone identifier rate-limited via token-bucket algorithm.
+2. **Supabase Auth Engine Integration**:
+   - Managed authentication powered by Supabase Auth (GoTrue).
+   - Generates cryptographically random 6-digit OTP tokens delivered via SMS provider integrations (Twilio, Gupshup, MessageBird).
+   - Rate limiting and brute-force throttling enforced via token-bucket algorithm (maximum 3 failed verification attempts per window).
 
-### 3.2 Secure KYC Document Ingestion & Storage Architecture
-1. **Presigned Upload Pipeline**:
-   - Clients never send heavy document binaries through API application servers.
-   - The KYC Service issues temporary (15-minute expiration) S3/R2 presigned upload URLs with strict metadata constraints:
+### 3.2 Secure KYC Document Ingestion & Storage Architecture (Supabase Storage)
+1. **Presigned Upload Pipeline via Supabase Storage**:
+   - Clients never stream heavy document binaries through application servers.
+   - The KYC Service interacts with Supabase Storage API (`https://ggzbyynthvxwkpdbjklf.supabase.co/storage/v1/`) to issue short-lived (15-minute) signed upload URLs for the `kyc-documents` bucket.
+   - Upload restrictions enforced:
      - Allowed MIME types: `image/jpeg`, `image/png`, `application/pdf`.
      - File size capped at 10 MB per document.
-     - Content MD5 / SHA-256 verification hash supplied by client.
+     - Content SHA-256 verification hash recorded in `public.kyc_documents`.
 2. **Storage Security & Encryption at Rest**:
-   - Stored in private, non-public cloud buckets with AWS KMS Customer Managed Keys (CMK) / Cloudflare R2 SSE.
-   - Direct bucket access is blocked; all view requests generate dynamic, watermarked, short-lived (60-second) signed URLs accessible only to authenticated Facility/Estate Managers with audit logging.
+   - Stored in private, non-public Supabase Storage buckets with server-side AES-256-GCM encryption.
+   - Direct bucket access is blocked; document viewing in the Admin Review Queue generates dynamic, watermarked, short-lived (60-second) signed URLs accessible strictly to authorized Estate Managers with full audit trail logging.
 
 ### 3.3 Strict Role-Based Access Control (RBAC) & Confinement Middleware
 1. **JWT Claims Contract**:
@@ -274,30 +291,215 @@ flowchart LR
 
 ---
 
-## 6. Multi-Tenant Data Architecture & Database Partitioning
+## 6. Multi-Tenant Data Architecture & Supabase Database Infrastructure (Project: ggzbyynthvxwkpdbjklf)
 
-Housing society management requires strict multi-tenant isolation, data privacy compliance, and atomic financial accounting.
+CommunityHolder utilizes a managed **Supabase PostgreSQL 16** cloud database cluster hosted on AWS (`ap-south-1`) as its central system of record for all user data, housing society hierarchies, gate security logs, and double-entry financial ledgers.
 
-### 6.1 Tenant Isolation Strategy: Row-Level Security (RLS)
-CommunityHolder utilizes a **Shared Database, Shared Schema with PostgreSQL Row-Level Security (RLS)**:
-- Every table includes a mandatory `society_id UUID NOT NULL` foreign key.
-- Each connection session sets `SET LOCAL app.current_society_id = '...'`.
-- PostgreSQL policies strictly prevent cross-tenant queries at the database engine level:
-```sql
-ALTER TABLE units ENABLE ROW LEVEL SECURITY;
-CREATE POLICY society_isolation_policy ON units
-    USING (society_id = current_setting('app.current_society_id')::uuid);
+- **Supabase Management Dashboard**: [`https://supabase.com/dashboard/project/ggzbyynthvxwkpdbjklf`](https://supabase.com/dashboard/project/ggzbyynthvxwkpdbjklf)
+- **Supabase Project Reference ID**: `ggzbyynthvxwkpdbjklf`
+- **Database Engine**: PostgreSQL 16.x with `pgcrypto`, `uuid-ossp`, `citext`, and Row-Level Security (RLS) extensions.
+
+```mermaid
+flowchart TD
+    subgraph SupabasePlatform["Supabase Cloud Platform (Project: ggzbyynthvxwkpdbjklf)"]
+        subgraph AuthLayer["Supabase Auth (GoTrue Engine)"]
+            AU["auth.users<br/>- User UUID (sub)<br/>- Phone (E.164 normalized)<br/>- Phone Confirmed At<br/>- Encrypted Metadata"]
+        end
+
+        subgraph DbPublic["PostgreSQL 16 Engine (public schema)"]
+            PU["public.users<br/>(Profile, E.164, KYC Status)"]
+            UR["public.user_roles<br/>(Role, Society ID, Permissions)"]
+            UM["public.unit_members<br/>(Unit ID, Occupancy Status)"]
+            KD["public.kyc_documents<br/>(Govt ID, Property Proof, Review)"]
+            SOC["public.societies & units<br/>(Buildings, Flats, VAN prefixes)"]
+            VS["public.visitor_sessions<br/>(Passcodes, Gate Logs, Overstay)"]
+            ERP["public.accounts & invoices<br/>(Double-Entry General Ledger)"]
+        end
+
+        subgraph RealtimeLayer["Supabase Realtime (CDC)"]
+            RT["PostgreSQL WAL Replication<br/>Broadcast: visitor_sessions, tickets, dues"]
+        end
+
+        subgraph StorageLayer["Supabase Storage (Encrypted S3-compatible Buckets)"]
+            B1["Bucket: kyc-documents (Private, 10MB)"]
+            B2["Bucket: visitor-photos (Private, 90-day auto-purge)"]
+            B3["Bucket: invoice-assets (Private, PDF ledgers)"]
+        end
+    end
+
+    AU -->|Postgres Trigger: handle_new_user()| PU
+    PU --> UR
+    PU --> UM
+    PU --> KD
+    VS -.->|Publication: supabase_realtime| RT
+    KD -.->|Storage Object Reference| B1
+    VS -.->|Storage Object Reference| B2
 ```
 
-### 6.2 Storage Separation Matrix
-| Data Type | Primary Store | Caching / Secondary | Retention / Purge Policy |
+### 6.1 Where and How User Data is Stored
+
+All user identity, demographic profile, occupancy, and compliance records are stored across tightly synchronized schemas within the Supabase PostgreSQL database:
+
+1. **Authentication Identity & Credentials (`auth.users`)**:
+   - Stored in the protected Supabase `auth` schema managed by GoTrue.
+   - Holds the primary cryptographic identity: User `id` (UUIDv4), `phone` (normalized E.164 format, e.g. `+919876543210`), `phone_confirmed_at`, `last_sign_in_at`, and JWT signing metadata.
+   - Passwords are not used; authentication is entirely passwordless via cryptographic phone OTP.
+
+2. **Application User Profile (`public.users`)**:
+   - Stored in the `public` schema in the Supabase database.
+   - Primary key `id UUID` directly references `auth.users(id) ON DELETE CASCADE`.
+   - Stores:
+     - `country_code` (e.g. `+91`, `+1`, `+44`, `+971`).
+     - `national_number` (e.g. `9876543210`).
+     - `phone_e164` (Normalized international format, indexed uniquely).
+     - `full_name` (Applicant legal name).
+     - `avatar_url` (Profile photo in Supabase Storage).
+     - `kyc_status` (`UNREGISTERED`, `PENDING_VERIFICATION`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`).
+     - `rejection_reason` (Mandatory explanation if KYC was declined by estate manager).
+     - `is_active` (Account operational state).
+     - `created_at`, `updated_at`.
+
+3. **Multi-Tenant Role Permissions (`public.user_roles`)**:
+   - Maps each `user_id` to a specific `society_id` and role:
+     - `RESIDENT_OWNER`: Full access to owned unit, gate approvals, maintenance dues.
+     - `RESIDENT_TENANT`: Full access to rented unit, gate approvals, utility bills.
+     - `SECURITY_GUARD`: Gatekeeper tablet access, visitor walk-in creation, PIN barrier verification.
+     - `FACILITY_MANAGER` / `ESTATE_MANAGER`: KYC review queue, AMC vendor tracking, work orders.
+     - `SOCIETY_ADMIN` / `PRESIDENT`: Complete administrative oversight, full double-entry accounting ledger.
+
+4. **Apartment Occupancy Mapping (`public.unit_members`)**:
+   - Maps `user_id` to physical society units (`unit_id` and `society_id`).
+   - Tracks member occupancy category (`PRIMARY_OWNER`, `CO_OWNER`, `TENANT`, `FAMILY_MEMBER`), primary emergency contact flag, and move-in/move-out validity dates.
+
+5. **KYC Documents & Verification Trail (`public.kyc_documents`)**:
+   - Metadata record for every uploaded proof:
+     - `document_category`: `GOVT_ID` (Aadhaar, Passport, Driving License) or `PROPERTY_PROOF` (Sale Deed, Possession Letter, Registered Rent Agreement).
+     - `file_url`: Private Supabase Storage path in the `kyc-documents` bucket.
+     - `file_sha256`: Cryptographic integrity checksum.
+     - `status`: `PENDING`, `VERIFIED`, `REJECTED`.
+     - `verified_by`: User UUID of the Estate/Facility Manager who audited the document.
+     - `verification_notes`: Timestamps and audit remarks.
+
+### 6.2 Automated Synchronization: `auth.users` to `public.users`
+
+Whenever a resident signs up or verifies their phone OTP in Supabase Auth, an automated database trigger creates or synchronizes their application profile in `public.users`:
+
+```sql
+-- Trigger Function: Sync Supabase Auth to Public Profile
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.users (id, phone_e164, country_code, national_number, full_name, kyc_status)
+    VALUES (
+        NEW.id,
+        NEW.phone,
+        COALESCE(NEW.raw_user_meta_data->>'country_code', '+91'),
+        COALESCE(NEW.raw_user_meta_data->>'national_number', SUBSTRING(NEW.phone FROM 4)),
+        COALESCE(NEW.raw_user_meta_data->>'full_name', 'Resident Applicant'),
+        'UNREGISTERED'
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET phone_e164 = EXCLUDED.phone_e164,
+        updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+```
+
+### 6.3 Tenant Isolation Strategy: Row-Level Security (RLS)
+
+CommunityHolder strictly isolates all multi-tenant queries at the database engine level via PostgreSQL Row-Level Security (RLS) configured in Supabase:
+
+1. **User Profile Policy**:
+   Users can read and update only their own profile, while Estate Managers and Admins can view residents belonging to their authorized society:
+   ```sql
+   ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+   CREATE POLICY users_self_access ON public.users
+       FOR ALL USING (auth.uid() = id);
+
+   CREATE POLICY users_admin_society_access ON public.users
+       FOR SELECT USING (
+           EXISTS (
+               SELECT 1 FROM public.user_roles ur
+               WHERE ur.user_id = auth.uid()
+                 AND ur.role IN ('SOCIETY_ADMIN', 'FACILITY_MANAGER')
+                 AND ur.society_id IN (
+                     SELECT um.society_id FROM public.unit_members um WHERE um.user_id = public.users.id
+                 )
+           )
+       );
+   ```
+
+2. **Multi-Tenant Society Isolation**:
+   Every operational table (`units`, `visitor_sessions`, `invoices`, `helpdesk_tickets`) enforces tenant scoping using the `society_id` embedded in the Supabase JWT claims or role context:
+   ```sql
+   ALTER TABLE public.units ENABLE ROW LEVEL SECURITY;
+
+   CREATE POLICY units_society_isolation ON public.units
+       FOR ALL USING (
+           society_id = (auth.jwt() -> 'app_metadata' ->> 'society_id')::uuid
+       );
+   ```
+
+### 6.4 Supabase Connection Pooling Architecture (Supavisor)
+
+To handle thousands of concurrent gate scans, mobile app launches, and ERP report queries without exhausting PostgreSQL connection limits, CommunityHolder connects via **Supavisor**:
+
+| Connection Mode | Port | Host Endpoint | Usage |
 |---|---|---|---|
-| **Core Entities (Users, Units, Societies)** | PostgreSQL 16 | Redis Cache (TTL: 1 hr) | Persistent |
-| **Financial Ledger & Invoices** | PostgreSQL (ACID) | Immutable Ledger Table | 7 Years (Statutory Audit Requirement) |
-| **Visitor Entries & Gate Logs** | PostgreSQL | TimescaleDB partition | Auto-purge photos after 90 days; metadata 1 year |
-| **Guard Patrol Telemetry** | TimescaleDB | Redis Geo | 6 Months |
-| **Media (Visitor Faces, Invoices, Bills)** | Cloudflare R2 / S3 | Cloudflare Edge Cache | Automatic lifecycle deletion rules |
-| **Distributed Locks (Double-Booking)** | Redis 7.2 (Redlock) | In-Memory | TTL: 60 seconds |
+| **Transaction Pooler** | `6543` | `aws-0-ap-south-1.pooler.supabase.com` | High-frequency API microservices, Express routes, serverless background workers |
+| **Session Pooler** | `5432` | `aws-0-ap-south-1.pooler.supabase.com` | Long-lived WebSocket connections, stateful sessions |
+| **Direct Connection** | `5432` | `db.ggzbyynthvxwkpdbjklf.supabase.co` | Prisma / Drizzle / Flyway schema migrations, DDL execution, admin scripts |
+
+### 6.5 Supabase Storage Buckets for Documents & Media
+
+Document and image assets are stored in private Supabase Storage buckets located within the project:
+
+1. **`kyc-documents` Bucket**:
+   - **Access**: Strictly private. Direct public access is disabled.
+   - **Allowed MIME types**: `application/pdf`, `image/jpeg`, `image/png`.
+   - **Max file size**: 10 MB per file.
+   - **Access Policy**: Accessible only to the uploading applicant (via `auth.uid()`) and authorized Facility/Estate Managers of the corresponding society via 60-second temporary signed URLs.
+2. **`visitor-photos` Bucket**:
+   - **Access**: Private.
+   - **Allowed MIME types**: `image/jpeg`, `image/png`.
+   - **Retention & Auto-Purge**: In accordance with DPDPA 2023 compliance, images are automatically purged by scheduled database worker after 90 days.
+3. **`invoice-assets` Bucket**:
+   - **Access**: Private.
+   - **Allowed MIME types**: `application/pdf`.
+   - **Access Policy**: Readable only by the unit resident and society finance committee.
+
+### 6.6 Supabase Realtime Engine (PostgreSQL CDC)
+
+Instant push notifications and UI updates are driven by the Supabase Realtime engine via PostgreSQL logical replication:
+- **`visitor_sessions`**: Notifies the Resident Mobile App immediately when a guard logs a visitor at the gate, initiating the intercom ring.
+- **`helpdesk_tickets`**: Broadcasts SLA ticket status updates to residents and facility technicians.
+- **`invoices`**: Triggers real-time dues clearance animations upon receipt of bank VAN payments.
+
+```sql
+-- Enable Realtime publication on critical operational tables
+ALTER PUBLICATION supabase_realtime ADD TABLE public.visitor_sessions;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.helpdesk_tickets;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.invoices;
+```
+
+### 6.7 Storage Separation Matrix
+
+| Data Type | Primary Store (Supabase Instance: `ggzbyynthvxwkpdbjklf`) | Caching / Secondary | Retention / Purge Policy |
+|---|---|---|---|
+| **User Profiles & Identity** | Supabase `auth.users` + `public.users` | Redis Cache (TTL: 1 hr) | Persistent (Archived on account closure) |
+| **Roles & Occupancy** | Supabase `public.user_roles`, `public.unit_members` | Redis Session Cache | Persistent (Revoked on move-out) |
+| **KYC Legal Documents** | Supabase Storage (`kyc-documents` bucket) + metadata in `public.kyc_documents` | Cloudflare Edge Cache (Private) | Retained for tenancy duration + statutory period |
+| **Financial Ledger & Invoices** | Supabase `public.accounts`, `public.ledger_entries` (ACID) | Immutable Ledger Table | 7 Years (Statutory Audit Requirement) |
+| **Visitor Entries & Gate Logs** | Supabase `public.visitor_sessions` | TimescaleDB partition | Photos purged after 90 days (DPDPA); metadata 1 year |
+| **Guard Patrol Telemetry** | Supabase PostgreSQL / TimescaleDB | Redis Geo | 6 Months |
+| **Media (Visitor Faces, Bills)**| Supabase Storage (`visitor-photos`, `invoice-assets`) | Signed URLs (60s TTL) | Auto-purged via background lifecycle jobs |
+| **Distributed Locks (Booking)** | Redis 7.2 (Redlock) | In-Memory | TTL: 60 seconds |
 
 ---
 
@@ -348,18 +550,21 @@ Residential data includes sensitive personal information (PII), entry/exit times
 ## 9. Deployment, CI/CD & Infrastructure Topology
 
 ```
-+------------------------------------------------------------------------------+
-| Cloud Infrastructure (AWS / GCP / Cloudflare)                                |
-+------------------------------------------------------------------------------+
-| Ingress: Cloudflare DNS -> Cloudflare WAF -> AWS ALB / NLB                  |
-| Compute: Kubernetes (EKS) Cluster                                            |
-|   - Namespace: production-communityholder                                    |
-|   - Ingress Controller: Envoy                                                |
-|   - Pod Autoscaling: KEDA (CPU, Memory, and Queue Depth metric triggers)    |
-|   - Core Pods: api-gateway, gate-service, erp-service, intercom-signaling   |
-| Database: AWS Aurora PostgreSQL (Multi-AZ) with Read Replicas                |
-| In-Memory: ElastiCache Redis Cluster (Multi-AZ)                              |
-| Storage: Cloudflare R2 / AWS S3 with KMS Customer Managed Keys               |
-| Observability: Datadog / OpenTelemetry + Grafana + Sentry Crash Reporting    |
-+------------------------------------------------------------------------------+
++----------------------------------------------------------------------------------------------------+
+| Cloud Infrastructure Topology (Supabase Managed Cloud + Containerized Compute)                     |
++----------------------------------------------------------------------------------------------------+
+| Ingress: Cloudflare DNS -> Cloudflare WAF / DDoS -> Application Load Balancers                     |
+| Compute: Kubernetes (EKS) / Cloud Run Containers                                                   |
+|   - Namespace: production-communityholder                                                          |
+|   - Ingress Gateway: Envoy (JWT Verification, E.164 phone normalization, rate limits)              |
+|   - Core Microservices: api-gateway, gate-service, erp-service, intercom-signaling                 |
+| Managed Data Tier (Supabase Instance: ggzbyynthvxwkpdbjklf):                                       |
+|   - Database: Supabase PostgreSQL 16 (AWS ap-south-1) with native Row-Level Security (RLS)         |
+|   - Connection Pooling: Supavisor Transaction Pooler (Port 6543) & Session Pooler (Port 5432)     |
+|   - Identity & Auth: Supabase Auth (GoTrue Engine) with Phone OTP Providers                        |
+|   - Realtime Engine: Supabase Realtime (CDC / Logical Replication WebSockets)                      |
+|   - Encrypted Storage: Supabase Storage Buckets (kyc-documents, visitor-photos, invoice-assets)    |
+| In-Memory Cache: ElastiCache Redis 7.2 Cluster (Distributed Redlock & Rate-Limiting Token Buckets) |
+| Observability: OpenTelemetry + Prometheus + Grafana + Sentry Crash Reporting                       |
++----------------------------------------------------------------------------------------------------+
 ```
