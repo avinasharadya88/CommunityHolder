@@ -197,19 +197,19 @@ export const ResidentView: React.FC = () => {
   };
 
   return (
-    <div className="flex justify-center items-center py-6 px-4">
-      {/* Smartphone Device Frame Simulator */}
-      <div className="relative w-[390px] h-[820px] rounded-[48px] bg-black p-3.5 shadow-2xl ring-1 ring-white/20 overflow-hidden flex flex-col">
-        {/* Physical phone camera notch / Dynamic Island */}
-        <div className="absolute top-5 left-1/2 -translate-x-1/2 w-28 h-6 bg-obsidian-dark rounded-full z-50 flex items-center justify-between px-2.5">
+    <div className="flex justify-center items-center py-2 sm:py-6 px-1 sm:px-4 w-full">
+      {/* Smartphone Device Frame Simulator - Full screen on mobile, iPhone frame on desktop */}
+      <div className="relative w-full max-w-[420px] sm:w-[390px] min-h-[calc(100vh-6rem)] sm:h-[820px] rounded-3xl sm:rounded-[48px] bg-black p-2 sm:p-3.5 shadow-2xl sm:ring-1 ring-white/20 overflow-hidden flex flex-col">
+        {/* Physical phone camera notch / Dynamic Island (desktop mockup only) */}
+        <div className="hidden sm:flex absolute top-5 left-1/2 -translate-x-1/2 w-28 h-6 bg-obsidian-dark rounded-full z-50 items-center justify-between px-2.5">
           <div className="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-800" />
           <div className="w-2 h-2 rounded-full bg-blue-900/60" />
         </div>
 
         {/* Screen Content Area */}
-        <div className="relative flex-1 w-full rounded-[38px] bg-obsidian-dark text-slate-100 flex flex-col overflow-y-auto overflow-x-hidden pt-8 pb-4 px-4 scrollbar-none">
-          {/* Status Bar */}
-          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 px-2 mb-3">
+        <div className="relative flex-1 w-full rounded-2xl sm:rounded-[38px] bg-obsidian-dark text-slate-100 flex flex-col overflow-y-auto overflow-x-hidden pt-3 sm:pt-8 pb-4 px-3 sm:px-4 scrollbar-none">
+          {/* Status Bar (desktop mockup only) */}
+          <div className="hidden sm:flex items-center justify-between text-[11px] font-mono text-slate-400 px-2 mb-3">
             <span>09:41</span>
             <div className="flex items-center gap-1.5">
               <span>5G</span>

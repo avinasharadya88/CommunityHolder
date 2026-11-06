@@ -46,9 +46,9 @@ wss.on('connection', (ws: WebSocket, req) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
-  server.listen(CONFIG.PORT, () => {
-    console.log(`[CommunityHolder API] Server listening on http://localhost:${CONFIG.PORT}`);
-    console.log(`[CommunityHolder Realtime] WebSocket server active at ws://localhost:${CONFIG.PORT}/ws`);
+  server.listen(CONFIG.PORT, '0.0.0.0', () => {
+    console.log(`[CommunityHolder API] Server listening on http://0.0.0.0:${CONFIG.PORT}`);
+    console.log(`[CommunityHolder Realtime] WebSocket server active at ws://0.0.0.0:${CONFIG.PORT}/ws`);
   });
 }
 

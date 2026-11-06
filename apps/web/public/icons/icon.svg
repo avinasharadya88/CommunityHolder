@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#161A22"/>
+      <stop offset="100%" stop-color="#080A0D"/>
+    </linearGradient>
+    <linearGradient id="mint" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F29D"/>
+      <stop offset="100%" stop-color="#00A86B"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="100%" stop-color="#D4AF37"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="504" height="504" x="4" y="4" rx="108" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8"/>
+
+  <!-- Glowing Emblem Ring -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="url(#mint)" stroke-width="4" stroke-opacity="0.3" filter="url(#glow)"/>
+
+  <!-- Architectural Isometric Building Monogram -->
+  <path d="M256 120 L380 190 L380 320 L256 390 L132 320 L132 190 Z" fill="#12151B" stroke="url(#mint)" stroke-width="12" stroke-linejoin="round"/>
+  
+  <path d="M256 120 L256 390" stroke="rgba(255,255,255,0.12)" stroke-width="4"/>
+  <path d="M132 190 L256 260 L380 190" stroke="rgba(255,255,255,0.15)" stroke-width="4"/>
+
+  <!-- Center Luxury Diamond Accent -->
+  <polygon points="256,220 286,256 256,292 226,256" fill="url(#mint)" filter="url(#glow)"/>
+
+  <!-- Subtitle Text -->
+  <text x="256" y="440" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="800" letter-spacing="8" fill="#FFFFFF" text-anchor="middle">COMMUNITY</text>
+</svg>
