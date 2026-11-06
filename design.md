@@ -21,6 +21,10 @@ erDiagram
     UNIT ||--o{ UNIT_MEMBER : assigns
     USER ||--o{ UNIT_MEMBER : occupies
     USER ||--o{ USER_ROLE : has
+    USER ||--o{ KYC_DOCUMENT : submits
+    SOCIETY ||--o{ KYC_DOCUMENT : verifies
+    UNIT ||--o{ KYC_DOCUMENT : relates_to
+    USER ||--o{ OTP_VERIFICATION : verifies_via
     
     UNIT ||--o{ VISITOR_SESSION : receives
     USER ||--o{ VISITOR_SESSION : approves
@@ -104,19 +108,59 @@ CREATE TABLE units (
 );
 
 -- ============================================================================
--- 2. USERS, ROLES & ACCESS CONTROL
+-- 2. USERS, AUTHENTICATION & KYC ONBOARDING
 -- ============================================================================
 
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    mobile_number VARCHAR(20) NOT NULL UNIQUE,
+    country_code VARCHAR(8) NOT NULL DEFAULT '+91', -- e.g. '+91', '+1', '+44', '+971'
+    national_number VARCHAR(20) NOT NULL, -- e.g. '9876543210'
+    phone_e164 VARCHAR(30) NOT NULL UNIQUE, -- E.164 normalized: '+919876543210'
     email CITEXT UNIQUE,
     full_name VARCHAR(150) NOT NULL,
     avatar_url TEXT,
-    password_hash TEXT,
+    kyc_status VARCHAR(30) NOT NULL DEFAULT 'UNREGISTERED', -- UNREGISTERED, PENDING_VERIFICATION, UNDER_REVIEW, APPROVED, REJECTED
+    rejection_reason TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE otp_verifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    phone_e164 VARCHAR(30) NOT NULL,
+    otp_hash VARCHAR(128) NOT NULL,
+    channel VARCHAR(20) NOT NULL DEFAULT 'SMS', -- 'SMS' or 'WHATSAPP'
+    purpose VARCHAR(30) NOT NULL DEFAULT 'LOGIN', -- 'LOGIN', 'REGISTER', 'KYC_RESUBMIT'
+    attempts_count INT NOT NULL DEFAULT 0,
+    is_consumed BOOLEAN NOT NULL DEFAULT FALSE,
+    expires_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_otp_lookup ON otp_verifications(phone_e164, is_consumed, expires_at);
+
+CREATE TABLE kyc_documents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    society_id UUID NOT NULL REFERENCES societies(id) ON DELETE CASCADE,
+    unit_id UUID NOT NULL REFERENCES units(id) ON DELETE CASCADE,
+    document_category VARCHAR(30) NOT NULL, -- 'GOVT_ID' or 'PROPERTY_PROOF'
+    document_type VARCHAR(50) NOT NULL, -- 'AADHAAR', 'PASSPORT', 'DRIVING_LICENSE', 'VOTER_ID', 'SALE_DEED', 'PROPERTY_TAX_RECEIPT', 'POSSESSION_LETTER', 'RENTAL_AGREEMENT'
+    document_identifier_masked VARCHAR(100), -- 'XXXX-XXXX-1234'
+    file_url TEXT NOT NULL, -- Private S3/R2 object key
+    file_sha256 VARCHAR(64) NOT NULL,
+    file_size_bytes BIGINT NOT NULL,
+    mime_type VARCHAR(50) NOT NULL, -- 'image/jpeg', 'image/png', 'application/pdf'
+    status VARCHAR(30) NOT NULL DEFAULT 'PENDING', -- 'PENDING', 'VERIFIED', 'REJECTED'
+    verified_by UUID REFERENCES users(id), -- Estate / Facility Manager ID
+    verified_at TIMESTAMPTZ,
+    verification_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_kyc_pending_review ON kyc_documents(society_id, status) 
+    WHERE status = 'PENDING';
 
 CREATE TABLE unit_members (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -124,7 +168,9 @@ CREATE TABLE unit_members (
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     member_type VARCHAR(30) NOT NULL, -- PRIMARY_OWNER, CO_OWNER, TENANT, FAMILY_MEMBER
     is_primary_contact BOOLEAN NOT NULL DEFAULT FALSE,
-    is_approved BOOLEAN NOT NULL DEFAULT FALSE,
+    approval_status VARCHAR(30) NOT NULL DEFAULT 'PENDING', -- PENDING, APPROVED, REJECTED
+    approved_by UUID REFERENCES users(id), -- Admin or Estate Manager who verified KYC
+    approved_at TIMESTAMPTZ,
     move_in_date DATE,
     move_out_date DATE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -271,7 +317,28 @@ CREATE TABLE amenity_bookings (
 
 ## 3. Core Business State Machines
 
-### 3.1 Visitor Pass Lifecycle (Gatekeeper)
+### 3.1 KYC Onboarding & Manual Administrative Approval Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> UNREGISTERED : User enters Phone & Country Code (+91 / Intl)
+    UNREGISTERED --> OTP_VERIFIED : 6-Digit OTP confirmed via SMS/WhatsApp
+    
+    OTP_VERIFIED --> REGISTRATION_IN_PROGRESS : Fills Name, selects Society & Unit
+    REGISTRATION_IN_PROGRESS --> PENDING_VERIFICATION : Uploads Govt ID & Ownership/Lease Proof
+    
+    PENDING_VERIFICATION --> UNDER_REVIEW : Estate / Facility Manager opens review queue
+    
+    UNDER_REVIEW --> APPROVED : Admin verifies documents match society records
+    UNDER_REVIEW --> REJECTED : Admin rejects with reason (Blurry scan, mismatched name)
+    
+    REJECTED --> PENDING_VERIFICATION : Resident re-uploads corrected documents
+    
+    APPROVED --> ACTIVE_MEMBER : Access unblocked; User assigned Unit Role & VAN
+    ACTIVE_MEMBER --> [*]
+```
+
+### 3.2 Visitor Pass Lifecycle (Gatekeeper)
 
 ```mermaid
 stateDiagram-v2
@@ -293,7 +360,7 @@ stateDiagram-v2
     CHECKED_OUT --> [*]
 ```
 
-### 3.2 Maintenance Invoice & Payment Lifecycle (ERP)
+### 3.3 Maintenance Invoice & Payment Lifecycle (ERP)
 
 ```mermaid
 stateDiagram-v2
@@ -312,7 +379,7 @@ stateDiagram-v2
     PAID --> [*] : Auto-generate digital receipt & post to General Ledger
 ```
 
-### 3.3 Helpdesk Ticket SLA Escalation
+### 3.4 Helpdesk Ticket SLA Escalation
 
 ```mermaid
 stateDiagram-v2
@@ -335,7 +402,195 @@ stateDiagram-v2
 
 ## 4. REST & Real-Time API Contracts
 
-### 4.1 Gatekeeper Visitor Check-in (Guard App -> Cloud)
+### 4.1 Mobile Phone OTP Authentication Contracts
+
+#### 4.1.1 Request OTP (SMS & WhatsApp Delivery)
+`POST /api/v1/auth/request-otp`
+
+**Request Payload:**
+```json
+{
+  "country_code": "+91", // Support +91 (India) & all international dial codes
+  "national_number": "9876543210",
+  "channel": "SMS" // "SMS" | "WHATSAPP"
+}
+```
+
+**Response Payload (200 OK):**
+```json
+{
+  "phone_e164": "+919876543210",
+  "channel": "SMS",
+  "retry_after_seconds": 60,
+  "expires_in_seconds": 300,
+  "message": "6-digit OTP dispatched successfully"
+}
+```
+
+#### 4.1.2 Verify OTP & Retrieve Role Token
+`POST /api/v1/auth/verify-otp`
+
+**Request Payload:**
+```json
+{
+  "country_code": "+91",
+  "national_number": "9876543210",
+  "otp": "491823"
+}
+```
+
+**Response Payload (200 OK):**
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "user": {
+    "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "phone_e164": "+919876543210",
+    "full_name": "Avinash Aradya",
+    "kyc_status": "PENDING_VERIFICATION", // "UNREGISTERED" | "PENDING_VERIFICATION" | "UNDER_REVIEW" | "APPROVED" | "REJECTED"
+    "active_society_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+    "unit_id": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+    "role": "RESIDENT_OWNER"
+  }
+}
+```
+
+---
+
+### 4.2 First-Time Registration & KYC Document Ingestion Contracts
+
+#### 4.2.1 Get Presigned Upload URL for Documents
+`POST /api/v1/onboarding/kyc/presigned-url`
+
+**Request Payload:**
+```json
+{
+  "document_category": "GOVT_ID", // "GOVT_ID" | "PROPERTY_PROOF"
+  "document_type": "AADHAAR", // "AADHAAR" | "PASSPORT" | "SALE_DEED" | "RENTAL_AGREEMENT"
+  "file_name": "aadhaar_front_back.pdf",
+  "mime_type": "application/pdf",
+  "file_size_bytes": 2451200,
+  "file_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}
+```
+
+**Response Payload (200 OK):**
+```json
+{
+  "upload_url": "https://storage.communityholder.com/kyc-vault/2026/11/doc_uuid_here.pdf?X-Amz-Signature=...",
+  "storage_key": "kyc-vault/2026/11/doc_uuid_here.pdf",
+  "valid_for_seconds": 900
+}
+```
+
+#### 4.2.2 Submit First-Time Registration & KYC Package
+`POST /api/v1/onboarding/kyc/submit`
+
+**Request Payload:**
+```json
+{
+  "full_name": "Avinash Aradya",
+  "email": "avinash@example.com",
+  "society_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+  "block_id": "4a5b6c7d-8e9f-0a1b-2c3d-4e5f6a7b8c9d",
+  "unit_id": "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
+  "relationship_type": "OWNER_OCCUPIED", // "OWNER_OCCUPIED" | "TENANT" | "NON_RESIDENT_OWNER"
+  "documents": [
+    {
+      "document_category": "GOVT_ID",
+      "document_type": "AADHAAR",
+      "storage_key": "kyc-vault/2026/11/doc_id_01.pdf",
+      "file_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_size_bytes": 2451200,
+      "mime_type": "application/pdf",
+      "document_identifier_masked": "XXXX-XXXX-8821"
+    },
+    {
+      "document_category": "PROPERTY_PROOF",
+      "document_type": "SALE_DEED",
+      "storage_key": "kyc-vault/2026/11/doc_id_02.pdf",
+      "file_sha256": "fa71c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b812",
+      "file_size_bytes": 6251200,
+      "mime_type": "application/pdf"
+    }
+  ]
+}
+```
+
+**Response Payload (201 Created):**
+```json
+{
+  "application_id": "8f3b2a1c-9d8e-4a7b-6c5d-4e3f2a1b0c9d",
+  "kyc_status": "PENDING_VERIFICATION",
+  "estimated_sla_hours": 24,
+  "message": "Registration submitted. Pending manual verification by Estate/Facility Manager."
+}
+```
+
+---
+
+### 4.3 Administrative KYC Verification Queue & Decision Contracts
+
+#### 4.3.1 Fetch Pending KYC Applications (Estate / Facility Manager)
+`GET /api/v1/admin/kyc/queue?society_id={id}&status=PENDING&limit=20`
+
+**Response Payload (200 OK):**
+```json
+{
+  "total_pending": 8,
+  "applications": [
+    {
+      "application_id": "8f3b2a1c-9d8e-4a7b-6c5d-4e3f2a1b0c9d",
+      "applicant_name": "Avinash Aradya",
+      "phone_e164": "+919876543210",
+      "unit_number": "Tower A - 1204",
+      "claimed_role": "OWNER_OCCUPIED",
+      "submitted_at": "2026-11-06T10:15:00Z",
+      "documents": [
+        {
+          "id": "doc_01",
+          "category": "GOVT_ID",
+          "type": "AADHAAR",
+          "masked_identifier": "XXXX-XXXX-8821",
+          "view_url": "https://storage.communityholder.com/view-temp/doc_01?watermark=..."
+        },
+        {
+          "id": "doc_02",
+          "category": "PROPERTY_PROOF",
+          "type": "SALE_DEED",
+          "view_url": "https://storage.communityholder.com/view-temp/doc_02?watermark=..."
+        }
+      ]
+    }
+  ]
+}
+```
+
+#### 4.3.2 Estate / Facility Manager Approval / Rejection Decision
+`PATCH /api/v1/admin/kyc/{application_id}/decision`
+
+**Request Payload (Approval):**
+```json
+{
+  "decision": "APPROVE", // "APPROVE" | "REJECT"
+  "notes": "Verified against developer allotment registry. All clear."
+}
+```
+
+**Request Payload (Rejection Example):**
+```json
+{
+  "decision": "REJECT",
+  "rejection_reason": "SALE_DEED_ILLEGIBLE",
+  "notes": "Pages 3 and 4 of the sale deed are blurred. Please re-upload clear color scans."
+}
+```
+
+---
+
+### 4.4 Gatekeeper Visitor Check-in (Guard App -> Cloud)
 `POST /api/v1/gate/visitor-sessions`
 
 **Request Payload:**
@@ -363,7 +618,7 @@ stateDiagram-v2
 }
 ```
 
-### 4.2 Resident Instant Approval (Resident App -> Cloud)
+### 4.5 Resident Instant Approval (Resident App -> Cloud)
 `PATCH /api/v1/gate/visitor-sessions/{id}/decision`
 
 **Request Payload:**
@@ -383,7 +638,7 @@ stateDiagram-v2
 }
 ```
 
-### 4.3 Offline-First Batch Sync (Guard App Outbox -> Cloud)
+### 4.6 Offline-First Batch Sync (Guard App Outbox -> Cloud)
 `POST /api/v1/gate/sync-batch`
 
 **Request Payload:**
@@ -441,11 +696,110 @@ Semantic Alerts:
   - Caption: 12px, Medium (Timestamps, Subtitles)
   - PIN Display: 36px, Bold, Monospace (6-Digit Guest OTP)
 
-### 5.3 Mobile Screen Layouts (Resident App)
+### 5.3 Mobile Onboarding & Registration Screen Wireframes
+
+#### 5.3.1 Screen A: Country Code & Phone Number Login
+```
++-------------------------------------------------------------+
+|                     COMMUNITYHOLDER                         |
+|             Smart Community & Society Platform              |
++-------------------------------------------------------------+
+|                                                             |
+|  Enter your mobile number to get started                     |
+|  We support both Indian and International numbers           |
+|                                                             |
+|  +---------------------+---------------------------------+  |
+|  | [India Flag] +91 v  |   9 8 7 6 5 4 3 2 1 0           |  |
+|  +---------------------+---------------------------------+  |
+|                                                             |
+|  [ GET OTP VIA SMS / WHATSAPP ]                             |
+|                                                             |
+|  By continuing, you agree to the Terms of Service & Privacy |
++-------------------------------------------------------------+
+```
+
+#### 5.3.2 Screen B: 6-Digit OTP Verification
+```
++-------------------------------------------------------------+
+| < Back                                                      |
+| Verification Code                                           |
+| We sent a 6-digit code to +91 98765 43210                   |
++-------------------------------------------------------------+
+|                                                             |
+|        [ 4 ]  [ 9 ]  [ 1 ]  [ 8 ]  [ 2 ]  [ 3 ]             |
+|                                                             |
+|  Resend Code in 00:45s   |   [ Send via WhatsApp ]          |
+|                                                             |
+|  [ VERIFY & CONTINUE ]                                      |
++-------------------------------------------------------------+
+```
+
+#### 5.3.3 Screen C: First-Time Registration & Document Submission
+```
++-------------------------------------------------------------+
+| Profile & Property Verification                             |
+| Step 1 of 2: Details & Property                             |
++-------------------------------------------------------------+
+| Full Legal Name:      [ Avinash Aradya                    ] |
+| Email Address:        [ avinash@example.com               ] |
+| Select Society:       [ Prestige Greenwoods, Bangalore  v ] |
+| Select Tower / Block: [ Tower Alpha                     v ] |
+| Select Flat / Unit:   [ Flat 1204                       v ] |
+| My Relationship:      (o) Owner   ( ) Tenant   ( ) Family   |
++-------------------------------------------------------------+
+| Step 2 of 2: Verification Documents (Mandatory)             |
+|                                                             |
+| 1. Government ID Proof (Aadhaar / Passport / DL):           |
+| +---------------------------------------------------------+ |
+| | [Upload Icon] aadhaar_front_back.pdf (2.4 MB)     [OK] | |
+| +---------------------------------------------------------+ |
+|                                                             |
+| 2. Proof of Property Ownership (Sale Deed / Tax / Lease):   |
+| +---------------------------------------------------------+ |
+| | [Upload Icon] sale_deed_reg_page.pdf (6.2 MB)     [OK] | |
+| +---------------------------------------------------------+ |
+|                                                             |
+| [ SUBMIT FOR ESTATE MANAGER APPROVAL ]                      |
++-------------------------------------------------------------+
+```
+
+#### 5.3.4 Screen D: Application Under Review (Pre-Approval Confinement)
+```
++-------------------------------------------------------------+
+|                                                             |
+|                      [ Clock / Shield Icon ]                |
+|                    Application Under Review                 |
+|                                                             |
+|  Your registration for Flat 1204 (Tower Alpha) at           |
+|  Prestige Greenwoods has been submitted.                    |
+|                                                             |
+|  Status: PENDING MANUAL VERIFICATION                        |
+|  Application ID: #CH-88219                                  |
+|  Submitted: Today, 10:15 AM                                 |
+|                                                             |
+|  The Estate / Facility Management Office is currently       |
+|  verifying your uploaded ID and Property documents.         |
+|  Expected review SLA: 24 - 48 Hours.                        |
+|                                                             |
+|  You will receive a notification as soon as access is       |
+|  approved.                                                  |
+|                                                             |
+|  +-------------------------------------------------------+  |
+|  | Need urgent clearance?                                 |  |
+|  | Call Estate Office: +91 80 2345 6789                  |  |
+|  +-------------------------------------------------------+  |
+|                                                             |
+|  [ REFRESH STATUS ]                    [ EDIT APPLICATION ] |
++-------------------------------------------------------------+
+```
+
+---
+
+### 5.4 Mobile Screen Layouts (Resident App — Approved State)
 ```
 +-------------------------------------------------------------+
 | [Avatar] Good Morning, Avinash!             [Bell] [SOS]    |
-| Flat: Tower A - 1204 (Owner)                                |
+| Flat: Tower A - 1204 (Owner - Approved)                     |
 +-------------------------------------------------------------+
 | Quick Actions:                                              |
 | +----------------+ +----------------+ +------------------+  |
@@ -469,7 +823,9 @@ Semantic Alerts:
 +-------------------------------------------------------------+
 ```
 
-### 5.4 Tablet Screen Layouts (Gatekeeper Guard App)
+---
+
+### 5.5 Tablet Screen Layouts (Gatekeeper Guard App)
 ```
 +-------------------------------------------------------------+
 | COMMUNITYHOLDER GATEKEEPER | North Gate Tablet | Status: OK |
@@ -489,6 +845,36 @@ Semantic Alerts:
 +-------------------------------------------------------------+
 | [ SCAN QR / RFID ]            [ EMERGENCY GATE LOCKDOWN ]   |
 +-------------------------------------------------------------+
+```
+
+---
+
+### 5.6 Web Admin / Facility Manager KYC Verification Workspace
+```
++----------------------------------------------------------------------------------------------------+
+| COMMUNITYHOLDER ERP | Prestige Greenwoods | Estate Manager Portal             [User: Rajesh (FM)]  |
++----------------------------------------------------------------------------------------------------+
+| [Dashboard] [KYC Approvals (8 Pending)] [Accounting] [Gate Logs] [Helpdesk] [Assets]              |
++----------------------------------------------------------------------------------------------------+
+| Reviewing Application: #CH-88219 | Flat: Tower Alpha - 1204 | Role: OWNER_OCCUPIED                 |
++---------------------------------------------------+------------------------------------------------+
+| LEFT PANE: Applicant & Property Registry Check    | RIGHT PANE: Interactive Document Inspector     |
++---------------------------------------------------+------------------------------------------------+
+| Applicant Name:  Avinash Aradya                   | Document 1: Government ID (Aadhaar Card)       |
+| Mobile Number:   +91 98765 43210 (Verified OTP)   | [ PREVIEW / ZOOM / ROTATE ]                    |
+| Email Address:   avinash@example.com              | Name on ID: Avinash Aradya  [MATCH: GREEN]     |
+| Claimed Unit:    Tower Alpha - Flat 1204          | Masked UID: XXXX-XXXX-8821                     |
+|                                                   |------------------------------------------------|
+| Society Master Database Cross-Check:              | Document 2: Property Proof (Sale Deed)         |
+| - Flat Registered Owner: Avinash Aradya           | [ PREVIEW / ZOOM / ROTATE ]                    |
+| - Current Unit Status: Marked as Handover Ready   | Schedule Details: Tower Alpha, Flat 1204       |
+| - Pending Maintenance Dues from Builder: $0.00    | Registered Date: 14-Oct-2025                   |
++---------------------------------------------------+------------------------------------------------+
+| Administrative Action Notes (Required for Rejection):                                              |
+| [ Verified all original sale deed schedules and national ID proof. Matches society records.      ] |
+|                                                                                                    |
+|   [ X REJECT APPLICATION (SPECIFY REASON) ]            [ V VERIFY & APPROVE FULL ACCESS ]          |
++----------------------------------------------------------------------------------------------------+
 ```
 
 ---

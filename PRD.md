@@ -30,6 +30,13 @@ Modern residential gated communities, apartment complexes, and housing societies
 +-----------------------------------------------------------------------------------+
 |                                 CommunityHolder                                   |
 +-----------------------------------------------------------------------------------+
+|  0. Authentication & Onboarding (Cross-Platform)                                  |
+|     - Mobile Number Login with Global Country Codes (+91 India & International)   |
+|     - Secure Passwordless OTP Verification (SMS / WhatsApp Delivery Fallback)     |
+|     - First-Time KYC Registration: Govt ID & Property Ownership/Tenancy Proof     |
+|     - Manual Review Queue for Society Admin, Estate & Facility Managers           |
+|     - Strict Role-Based Access Control (RBAC) with Pre-Approval Restricted State  |
++-----------------------------------------------------------------------------------+
 |  1. Resident App (iOS/Android/Web)                                                |
 |     - Visitor Pre-approval & Intercom Approval                                    |
 |     - Maintenance Payments & Ledger                                               |
@@ -47,6 +54,7 @@ Modern residential gated communities, apartment complexes, and housing societies
 |     - Offline-First Operation with Background Delta Sync                          |
 +-----------------------------------------------------------------------------------+
 |  3. Management Committee & ERP Admin Portal (Web Dashboard & Admin App)           |
+|     - Manual KYC Verification Queue & Document Inspection (Approve / Reject)      |
 |     - Complete Double-Entry Society Accounting & General Ledger                   |
 |     - Automated Dues Calculation (Fixed, Sq.Ft, Sub-meters, DG, Penalties)        |
 |     - Smart Bank Reconciliation & Virtual Account Payments (VAN / UPI)            |
@@ -57,19 +65,80 @@ Modern residential gated communities, apartment complexes, and housing societies
 ```
 
 ### 2.1 Persona Specifications
-- **P1: Apartment Resident (Owner-Occupant)**: Wants instant notifications for visitors, transparent accounting for society expenditures, hassle-free maintenance bill payment with instant receipts, and simplified facility bookings.
-- **P2: Apartment Resident (Tenant)**: Needs fast gate approval passes, amenity access, clear distinction between landlord-responsible capital dues vs tenant-responsible utility/maintenance dues, and helpdesk access.
-- **P3: Non-Resident Owner (Landlord)**: Needs remote oversight of flat occupancy, tenant verification status, receipt of property tax/sinking fund notifications, and society AGM voting participation.
-- **P4: Security Guard (Gate Operator)**: Requires an intuitive, multilingual interface with high-contrast buttons, fast entry validation (< 3 seconds per visitor), parcel logging, and full offline functionality during network drops.
-- **P5: Society Treasurer / Accountant**: Requires double-entry bookkeeping, GST compliance, balance sheet generation, defaulter aging analysis, automated late-interest formulas, and bank reconciliation.
-- **P6: Estate / Facility Manager**: Needs a centralized ticketing system with SLA timers, vendor work-order generation, asset preventive maintenance reminders, and security patrol monitoring.
-- **P7: Domestic Staff (Maids, Drivers, Cooks)**: Need instant gate entry identification, attendance tracking for payroll, and verified work profiles across flats.
+- **P1: Apartment Resident (Owner-Occupant)**: Submits property ownership documents (Sale Deed/Tax Receipt) during onboarding; once approved by Estate Manager, accesses gate approvals, transparent society ledger, dues payment, and amenity bookings.
+- **P2: Apartment Resident (Tenant)**: Submits government ID and registered Rental/Lease Agreement; upon manual verification by Admin/Facility Manager, gains access to gate passes, domestic staff notifications, and tenant utility dues.
+- **P3: Non-Resident Owner (Landlord)**: Authenticates with international/domestic phone number, manages multiple owned units, verifies tenant allocations remotely, and participates in society AGM polling.
+- **P4: Security Guard (Gate Operator)**: Accesses Gatekeeper mode via guard roster credentials and OTP; executes sub-second visitor check-in, staff attendance, and emergency gate controls.
+- **P5: Society Treasurer / Accountant**: Reviews audited financial accounts, reconciles virtual account bank streams, and authorizes society purchase orders.
+- **P6: Estate / Facility Manager**: Dedicated operational gatekeeper responsible for reviewing first-time resident registrations, verifying uploaded ID and property proofs, managing vendor SLAs, and handling campus assets.
+- **P7: Domestic Staff (Maids, Drivers, Cooks)**: Verified by Facility Manager and linked to resident units for automatic gate pass check-in and attendance logging.
 
 ---
 
 ## 3. Reverse-Engineered Feature Specifications
 
-### 3.1 Module 1: Front-Gate Security & Visitor Management (Gatekeeper)
+### 3.0 Module 0: Strict Role-Based Authentication, Phone OTP & KYC Onboarding
+
+#### 3.0.1 Mobile Number & Country Code OTP Authentication
+1. **Global Phone Number Support (E.164 Standard)**:
+   - Dedicated interactive country code picker supporting Indian numbers (`+91`) and international numbers across all regions (`+1` US/Canada, `+44` UK, `+971` UAE, `+65` Singapore, etc.).
+   - Client-side and server-side validation using Google's `libphonenumber` standard to enforce carrier and length validity before triggering SMS dispatch.
+2. **Passwordless OTP Generation & Delivery**:
+   - 6-digit cryptographically secure time-based OTP valid for 5 minutes.
+   - Dual delivery pipeline: Primary delivery via high-reliability Tier-1 SMS Gateway (e.g., Twilio / Gupshup / Karix); automatic failover to WhatsApp Business API if SMS is unacknowledged within 45 seconds.
+   - Anti-abuse & rate limiting: Maximum 3 OTP requests per 10 minutes per IP/Phone; 5 incorrect OTP attempts lock the account for 30 minutes.
+3. **Session & Token Management**:
+   - On successful OTP validation, the backend generates an asymmetric JSON Web Token (JWT) containing tenant society ID, user ID, assigned roles, and current KYC verification status (`UNREGISTERED`, `PENDING_VERIFICATION`, `UNDER_REVIEW`, `APPROVED`, `REJECTED`).
+   - Strict Role-Based Access Control (RBAC): Token scopes dictate exact API privileges across Resident, Security Guard, Facility Manager, Accountant, and Society Admin.
+
+#### 3.0.2 First-Time User Registration & KYC Onboarding Flow
+1. **Profile & Property Affiliation**:
+   - When a phone number is authenticated for the first time, the user is directed to the **Mandatory First-Time Registration & KYC Flow**.
+   - User provides full legal name, secondary contact email, emergency contact, and profile avatar.
+   - User selects:
+     - Target Housing Society from verified society directory.
+     - Block / Tower / Phase.
+     - Unit / Flat / Villa Number.
+     - Relationship Type: `OWNER_OCCUPIED`, `NON_RESIDENT_OWNER`, `TENANT`, or `FAMILY_MEMBER`.
+2. **Mandatory Verification Document Submission**:
+   - To prevent unauthorized access to community security feeds and gate intercoms, users **must** upload authentic verification documentation before accessing any community features:
+     - **Document 1: Personal Identification Proof (Government ID)**:
+       - Options: Aadhaar Card (with masked UID option), Passport, Driving License, or Voter ID Card.
+       - Requirement: Clear front and back photo/PDF showing legal name matching registration.
+     - **Document 2: Proof of Property Ownership or Tenancy**:
+       - **For Property Owners**: Registered Sale Deed (title page + schedule), Latest Property Tax Paid Receipt, Possession / Builder Allotment Letter, or Khata Certificate.
+       - **For Tenants**: Registered Rent Agreement / Lease Agreement showing landlord name, tenant name, flat number, and valid lease period.
+   - Direct-to-cloud secure encrypted upload (AES-256-GCM) with tamper-evident SHA-256 content hashes.
+3. **Pre-Approval Restricted State**:
+   - Upon submitting registration and documents, the user's account transitions to `PENDING_VERIFICATION`.
+   - **Access Confinement**: The resident cannot access gate feeds, visitor logs, intercoms, payments, or community forums while in this state.
+   - The user sees a dedicated **"Application Under Review"** status dashboard displaying:
+     - Application ID and submission timestamp.
+     - Selected unit and society details.
+     - Document preview thumbnails with verified upload status.
+     - Estimated review time SLA (typically 24–48 hours).
+     - Direct helpline contact to the Estate Management Office.
+
+#### 3.0.3 Manual Verification & Approval Workflow (Admin / Estate / Facility Manager)
+1. **Verification Queue Dashboard**:
+   - Dedicated administrative portal screen for Society Admins, Estate Managers, and Facility Managers.
+   - Filterable pending review queue sorted by submission date, block/tower, and member type (Owner vs Tenant).
+2. **Document Review & Comparison Workspace**:
+   - Split-screen comparison tool:
+     - Left pane: Registered applicant details, phone number, email, and claimed unit.
+     - Right pane: High-resolution document viewer with pan/zoom, rotation, and side-by-side inspection of Government ID and Property Ownership Proof.
+     - Official Society Roster cross-check: Highlights whether the flat is currently marked vacant, registered to an existing owner, or leased to another active tenant.
+3. **Administrative Decision Actions**:
+   - **Action A: APPROVE**:
+     - Estate/Facility Manager clicks "Verify & Approve Access".
+     - System updates user status to `APPROVED`, links the user to the `unit_members` table as an active resident, generates flat virtual account numbers (VAN), and enables full role privileges.
+     - Dispatches instant high-priority welcome push notification, SMS, and WhatsApp message: *"Welcome to CommunityHolder! Your access for Flat [Unit No] in [Society Name] has been verified and approved."*
+   - **Action B: REJECT**:
+     - Estate/Facility Manager selects "Reject Application" and is **required** to select or input a specific rejection reason (e.g., *"Uploaded sale deed does not match applicant name"*, *"Lease agreement has expired"*, *"ID proof image is blurry/unreadable"*).
+     - Account status transitions to `REJECTED`.
+     - Resident app updates immediately with the exact rejection feedback and provides a one-click **"Resubmit Updated Documents"** workflow without requiring re-entry of basic profile information.
+4. **Immutable KYC Audit Trail**:
+   - Every verification, approval, rejection, and document view is permanently logged with the reviewer's User ID, timestamp, IP address, and comments for statutory compliance and RWA audit inspections.
 
 #### 3.1.1 Visitor Check-in & Validation Workflows
 1. **Walk-In Visitors**:

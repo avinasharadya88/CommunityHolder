@@ -34,12 +34,13 @@ flowchart TD
     end
 
     subgraph Services["Core Application Services (Modular Monolith / Microservices)"]
-        D1["Identity & RBAC Service<br/>(Multi-Tenant Auth, Sessions)"]
-        D2["Gate & Visitor Service<br/>(Passcodes, Walk-ins, ANPR, Guard Roster)"]
-        D3["ERP & Invoicing Service<br/>(Billing Engine, Chart of Accounts, General Ledger)"]
-        D4["Payment & Reconciliation Service<br/>(UPI, Cards, Virtual Accounts - VAN)"]
-        D5["Helpdesk & Facility Service<br/>(SLA Engine, Amenity Slot Allocator)"]
-        D6["Governance & Social Service<br/>(Digital Notice Board, Voting, Forum)"]
+        D1["Identity & RBAC Service<br/>(Phone E.164, Mobile OTP, JWT, RBAC)"]
+        D2["KYC & Onboarding Service<br/>(Document Ingestion, S3 Presigned URLs, Review Queue)"]
+        D3["Gate & Visitor Service<br/>(Passcodes, Walk-ins, ANPR, Guard Roster)"]
+        D4["ERP & Invoicing Service<br/>(Billing Engine, Chart of Accounts, General Ledger)"]
+        D5["Payment & Reconciliation Service<br/>(UPI, Cards, Virtual Accounts - VAN)"]
+        D6["Helpdesk & Facility Service<br/>(SLA Engine, Amenity Slot Allocator)"]
+        D7["Governance & Social Service<br/>(Digital Notice Board, Voting, Forum)"]
     end
 
     subgraph Data["Persistence & Storage Tier"]
@@ -91,7 +92,111 @@ The **Management Committee ERP Portal** and **Resident Web Portal** are built us
 
 ---
 
-## 3. Real-Time Intercom & Gate Notification Architecture
+## 3. Strict Role-Based Identity, Phone OTP & KYC Onboarding Architecture
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Resident Applicant
+    participant C as Mobile / Web Client
+    participant G as API Gateway (Envoy)
+    participant I as Identity & Auth Service
+    participant R as Redis OTP Store
+    participant K as KYC Onboarding Service
+    participant S3 as Secure Document Storage (S3/R2)
+    actor A as Admin / Estate / Facility Manager
+
+    Note over U,R: Phase 1: Mobile Phone + Country Code OTP Login
+    U->>C: 1. Enter Country Code (+91 / Intl) & Phone Number
+    C->>G: 2. POST /api/v1/auth/request-otp (E.164 phone)
+    G->>I: 3. Validate Format (libphonenumber) & Rate Limits
+    I->>R: 4. Store Cryptographic Salted Hash of OTP (TTL: 5 min)
+    I->>U: 5. Dispatch OTP via SMS (Twilio/Gupshup) / WhatsApp Fallback
+    U->>C: 6. Input 6-Digit OTP
+    C->>G: 7. POST /api/v1/auth/verify-otp
+    G->>I: 8. Compare Hash with Redis Store
+    I-->>C: 9. Return Session JWT (Role: APPLICANT, kyc_status: UNREGISTERED)
+
+    Note over U,S3: Phase 2: First-Time Registration & KYC Document Upload
+    U->>C: 10. Select Society, Block, Unit & Role (Owner/Tenant)
+    C->>K: 11. Request Presigned Upload URLs (Govt ID + Property Proof)
+    K-->>C: 12. Return Presigned S3/R2 URLs with strict Content-Type & Hash locks
+    C->>S3: 13. Direct Client-to-S3 Upload with AES-256-GCM Server Encryption
+    C->>K: 14. Submit KYC Application (Doc S3 Keys + Metadata)
+    K->>K: 15. Update Account: kyc_status = PENDING_VERIFICATION
+    K-->>A: 16. Broadcast Real-Time Alert to Estate/Facility Manager Queue
+
+    Note over A,U: Phase 3: Manual Verification & Access Provisioning
+    A->>K: 17. Open Pending Review Dashboard (Inspect ID & Title/Lease)
+    alt Approved by Estate / Facility Manager
+        A->>K: 18a. Click "Verify & Approve Access"
+        K->>I: 19a. Upgrade User Role (OWNER/TENANT), kyc_status = APPROVED
+        K->>U: 20a. Dispatch Push/SMS: "Access Approved! Welcome to your Community"
+        Note over U: App unblocks full Gate, ERP & Community features
+    else Rejected by Estate / Facility Manager
+        A->>K: 18b. Select "Reject" + Mandatory Reason ("Blurred ID / Name mismatch")
+        K->>I: 19b. Set kyc_status = REJECTED (Attach rejection reason)
+        K->>U: 20b. Dispatch Alert with Rejection Reason & Re-upload Action
+    end
+```
+
+### 3.1 Global Phone Number Ingestion & OTP Verification Pipeline
+1. **E.164 Normalization Engine**:
+   - Integrated with Google's `libphonenumber` across Flutter and backend microservices.
+   - Parses, validates, and normalizes phone numbers against international carriers and dial plans:
+     - **India (`+91`)**: Validates 10-digit mobile series starting with 6, 7, 8, 9.
+     - **International Numbers**: Normalizes country calling code, national destination code (NDC), and subscriber number (SN) across US/Canada (`+1`), UK (`+44`), UAE (`+971`), Singapore (`+65`), Australia (`+61`), etc.
+2. **Cryptographic OTP Storage in Redis**:
+   - OTP codes are generated via `crypto.randomInt(100000, 999999)`.
+   - Never stored in plain text. Stored as `HMAC-SHA256(phone + otp, secret_key)` in Redis with a 300-second TTL.
+   - Brute-force throttling: Maximum 3 attempts per OTP generation; client IP and phone identifier rate-limited via token-bucket algorithm.
+
+### 3.2 Secure KYC Document Ingestion & Storage Architecture
+1. **Presigned Upload Pipeline**:
+   - Clients never send heavy document binaries through API application servers.
+   - The KYC Service issues temporary (15-minute expiration) S3/R2 presigned upload URLs with strict metadata constraints:
+     - Allowed MIME types: `image/jpeg`, `image/png`, `application/pdf`.
+     - File size capped at 10 MB per document.
+     - Content MD5 / SHA-256 verification hash supplied by client.
+2. **Storage Security & Encryption at Rest**:
+   - Stored in private, non-public cloud buckets with AWS KMS Customer Managed Keys (CMK) / Cloudflare R2 SSE.
+   - Direct bucket access is blocked; all view requests generate dynamic, watermarked, short-lived (60-second) signed URLs accessible only to authenticated Facility/Estate Managers with audit logging.
+
+### 3.3 Strict Role-Based Access Control (RBAC) & Confinement Middleware
+1. **JWT Claims Contract**:
+   Every issued access token contains:
+   ```json
+   {
+     "sub": "user_uuid_here",
+     "phone": "+919876543210",
+     "society_id": "society_uuid_here",
+     "unit_id": "unit_uuid_here",
+     "roles": ["RESIDENT_OWNER"],
+     "kyc_status": "APPROVED",
+     "exp": 1762410000
+   }
+   ```
+2. **API Gateway Confinement Guard**:
+   - The API Gateway executes a centralized **KYC Confinement Guard**:
+     - If `kyc_status == 'UNREGISTERED'`: Can only access `/api/v1/onboarding/*` and `/api/v1/societies/lookup`.
+     - If `kyc_status == 'PENDING_VERIFICATION'`: Can only access `/api/v1/onboarding/status` and `/api/v1/users/profile`. All calls to Gate, Visitor, Finance, or Community return `403 Forbidden (KYC_VERIFICATION_PENDING)`.
+     - If `kyc_status == 'REJECTED'`: Can only access the re-upload endpoint `/api/v1/onboarding/resubmit`.
+     - If `kyc_status == 'APPROVED'`: Granted full access corresponding to assigned role.
+
+### 3.4 Role Permission Matrix
+
+| Role | Onboarding & KYC | Gate & Visitors | Intercom | Invoicing & ERP | Helpdesk | Admin Verification Queue |
+|---|---|---|---|---|---|---|
+| **APPLICANT (Unverified)** | Upload Docs / View Status | ❌ Blocked | ❌ Blocked | ❌ Blocked | ❌ Blocked | ❌ Blocked |
+| **RESIDENT_OWNER** | View Status | Full Access | Full Access | View & Pay | Create / Rate | ❌ Blocked |
+| **RESIDENT_TENANT** | View Status | Full Access | Full Access | View & Pay Utilities | Create / Rate | ❌ Blocked |
+| **SECURITY_GUARD** | N/A | Check-in / Outbox | Gate-to-Phone | ❌ Blocked | View Campus Ops | ❌ Blocked |
+| **FACILITY / ESTATE MANAGER** | N/A | View Logs | ❌ Blocked | Work Orders / POs | Manage / Assign | **Full Review & Approve** |
+| **SOCIETY ADMIN / PRESIDENT** | N/A | Full Oversight | Emergency Intercom | Full ERP / Ledger | Escalate | **Full Review & Approve** |
+
+---
+
+## 4. Real-Time Intercom & Gate Notification Architecture
 
 One of the core reverse-engineered features of ADDA Gatekeeper is the **Guard-to-Resident Intercom**. In traditional apartments, hardwired intercoms fail frequently. CommunityHolder provides a cloud-native, reliable software intercom:
 
@@ -128,7 +233,7 @@ sequenceDiagram
 
 ---
 
-## 4. Offline-First Guard Synchronization Architecture
+## 5. Offline-First Guard Synchronization Architecture
 
 Security gates often experience network instability. A guard cannot make visitors wait because Wi-Fi dropped. CommunityHolder implements a **Local-First, Event-Sourced Sync Topology** on guard devices:
 
@@ -169,11 +274,11 @@ flowchart LR
 
 ---
 
-## 5. Multi-Tenant Data Architecture & Database Partitioning
+## 6. Multi-Tenant Data Architecture & Database Partitioning
 
 Housing society management requires strict multi-tenant isolation, data privacy compliance, and atomic financial accounting.
 
-### 5.1 Tenant Isolation Strategy: Row-Level Security (RLS)
+### 6.1 Tenant Isolation Strategy: Row-Level Security (RLS)
 CommunityHolder utilizes a **Shared Database, Shared Schema with PostgreSQL Row-Level Security (RLS)**:
 - Every table includes a mandatory `society_id UUID NOT NULL` foreign key.
 - Each connection session sets `SET LOCAL app.current_society_id = '...'`.
@@ -184,7 +289,7 @@ CREATE POLICY society_isolation_policy ON units
     USING (society_id = current_setting('app.current_society_id')::uuid);
 ```
 
-### 5.2 Storage Separation Matrix
+### 6.2 Storage Separation Matrix
 | Data Type | Primary Store | Caching / Secondary | Retention / Purge Policy |
 |---|---|---|---|
 | **Core Entities (Users, Units, Societies)** | PostgreSQL 16 | Redis Cache (TTL: 1 hr) | Persistent |
@@ -196,7 +301,7 @@ CREATE POLICY society_isolation_policy ON units
 
 ---
 
-## 6. Financial Engine Architecture (Double-Entry ERP)
+## 7. Financial Engine Architecture (Double-Entry ERP)
 
 To match and exceed ADDA's accounting capabilities, CommunityHolder implements an **immutable double-entry general ledger**:
 
@@ -212,14 +317,14 @@ General Ledger Transaction Structure
 +---------------------------------------------------------------------------------+
 ```
 
-### 6.1 Automated Virtual Account Number (VAN) Processing
+### 7.1 Automated Virtual Account Number (VAN) Processing
 1. Partner bank (ICICI / HDFC / RazorpayX) generates unique virtual account numbers for each flat: `CHOLDR + [SOCIETY_CODE] + [UNIT_NO]`.
 2. When a resident pays via NEFT/RTGS/IMPS, the bank webhooks the payload to CommunityHolder's `/api/v1/webhooks/banking/van`.
 3. The webhook engine matches the account suffix to the unit, creates an automated receipt, posts equal debit/credit entries to the ledger, and sends the resident an instant push receipt.
 
 ---
 
-## 7. Security, Privacy & DPDPA Compliance Architecture
+## 8. Security, Privacy & DPDPA Compliance Architecture
 
 Residential data includes sensitive personal information (PII), entry/exit timestamps of family members, and high-value financial data. CommunityHolder implements a **Zero-Trust Security Framework**:
 
@@ -240,7 +345,7 @@ Residential data includes sensitive personal information (PII), entry/exit times
 
 ---
 
-## 8. Deployment, CI/CD & Infrastructure Topology
+## 9. Deployment, CI/CD & Infrastructure Topology
 
 ```
 +------------------------------------------------------------------------------+

@@ -21,6 +21,7 @@ The complete product, architectural, and engineering blueprint has been document
 1. 📄 **[PRD.md](file:///Users/avinasharadya88/Documents/CommunityHolder/PRD.md)** — **Product Requirements Document**:
    - Product Vision, User Personas (Resident Owners, Tenants, Landlords, Guards, Treasurers, Facility Managers).
    - Functional module breakdowns:
+     - **Authentication & Onboarding**: Strict role-based login via mobile phone number with Indian (`+91`) and international country codes, passwordless OTP (SMS & WhatsApp delivery), first-time registration with mandatory Government ID and Property Ownership/Tenancy proof, manual review and approval queue for Society Admin / Estate / Facility Managers, and pre-approval app confinement.
      - **Front-Gate Security (Gatekeeper)**: Walk-in visitor check-in, pre-approved guest PINs/QR, delivery & parcel custody, domestic daily staff tracking, guard patrolling, overstay alerts, emergency panic SOS.
      - **Society ERP & Accounting**: Flexible dues calculation engine (sq.ft, flat, utility meters), automated invoice delivery, multi-channel payment gateway (UPI/Cards), Virtual Account Numbers (VAN) auto-reconciliation, double-entry general ledger, vendor purchase order (PO) workflows.
      - **Resident Experience Super App**: Helpdesk ticketing with SLAs, amenity slot bookings, domestic staff directory & reviews, community notice board, discussions, and polling.
@@ -28,6 +29,7 @@ The complete product, architectural, and engineering blueprint has been document
 
 2. 🏗️ **[architecture.md](file:///Users/avinasharadya88/Documents/CommunityHolder/architecture.md)** — **System Architecture**:
    - High-Level Topology & Edge Routing (Cloudflare CDN/WAF, API Gateway).
+   - Strict Role-Based Identity & KYC Pipeline (E.164 normalization, Redis cryptographic OTP store, direct-to-S3 presigned document uploads, KMS encryption, API Gateway confinement guard, and Admin Review Queue).
    - Cross-Platform Frontend Strategy:
      - **Mobile**: Flutter for Android & iOS (Resident App & Gatekeeper Tablet App) with native platform channels (CallKit/PushKit/ConnectionService for VoIP intercom).
      - **Web**: Next.js (React 19 / TypeScript / Tailwind CSS) for Society Admin ERP Portal and Resident Web Portal.
@@ -37,10 +39,10 @@ The complete product, architectural, and engineering blueprint has been document
    - Security, Zero-Trust Privacy, Phone Number Masking, and DPDPA/GDPR compliance.
 
 3. 🎨 **[design.md](file:///Users/avinasharadya88/Documents/CommunityHolder/design.md)** — **System & Technical Design**:
-   - Entity-Relationship Diagram (ERD) & production PostgreSQL 16 DDL schemas.
-   - Business State Machines (Visitor Pass lifecycle, Maintenance Invoice lifecycle, Helpdesk ticket SLA escalation).
-   - REST, WebSocket & Sync API contracts.
-   - UI/UX Design System: Color tokens (Emerald Slate, Deep Forest, Mint Glow), typography hierarchy, screen layout wireframes for mobile resident app and guard tablet.
+   - Entity-Relationship Diagram (ERD) & production PostgreSQL 16 DDL schemas (including `users`, `otp_verifications`, `kyc_documents`, and `unit_members`).
+   - Business State Machines (First-Time Registration & KYC Approval, Visitor Pass lifecycle, Maintenance Invoice lifecycle, Helpdesk ticket SLA escalation).
+   - REST, WebSocket & Sync API contracts (Phone OTP request/verify, KYC upload presigned URLs, Admin review queue & decision, Gatekeeper check-ins).
+   - UI/UX Design System: Color tokens (Emerald Slate, Deep Forest, Mint Glow), typography hierarchy, screen layout wireframes for mobile onboarding, resident app, and admin split-screen verification workspace.
    - Edge case analysis and system resiliency matrix.
 
 ---
