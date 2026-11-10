@@ -84,13 +84,13 @@ class InMemoryDatabase {
   }
 
   private seedInitialData() {
-    // 1. Seed Society
+    // 1. Seed Primary Society ("Generic Apartment name")
     const societyId = 'soc_prestige_greenwoods';
     const society: Society = {
       id: societyId,
-      name: 'Prestige Greenwoods',
-      code: 'BLR-GRN-01',
-      address_street: 'Outer Ring Road, Bellandur',
+      name: 'Generic Apartment name',
+      code: 'GEN-APT-01',
+      address_street: 'Main Central Avenue, Layout #1',
       city: 'Bangalore',
       state: 'Karnataka',
       postal_code: '560103',
@@ -107,7 +107,50 @@ class InMemoryDatabase {
     };
     this.societies.set(societyId, society);
 
-    // 2. Seed Blocks & Units
+    // Seed Additional Societies for Selection
+    const silverOakId = 'soc_silver_oak';
+    this.societies.set(silverOakId, {
+      id: silverOakId,
+      name: 'Silver Oak Heights',
+      code: 'SLV-OAK-02',
+      address_street: '45 Green Valley Road',
+      city: 'Bangalore',
+      state: 'Karnataka',
+      postal_code: '560068',
+      country: 'IN',
+      van_bank_prefix: 'SLVOAK',
+      settings: {
+        visitor_photo_required: true,
+        overstay_alert_minutes: 30,
+        ivr_fallback_timeout_seconds: 30,
+        auto_purge_visitor_days: 90,
+        late_payment_penalty_rate_annual: 18.0,
+      },
+      created_at: new Date('2025-01-01').toISOString(),
+    });
+
+    const palmMeadowsId = 'soc_palm_meadows';
+    this.societies.set(palmMeadowsId, {
+      id: palmMeadowsId,
+      name: 'Palm Meadows Residency',
+      code: 'PLM-MDW-03',
+      address_street: '12 Lakeview Boulevard',
+      city: 'Bangalore',
+      state: 'Karnataka',
+      postal_code: '560066',
+      country: 'IN',
+      van_bank_prefix: 'PLMMDW',
+      settings: {
+        visitor_photo_required: true,
+        overstay_alert_minutes: 30,
+        ivr_fallback_timeout_seconds: 30,
+        auto_purge_visitor_days: 90,
+        late_payment_penalty_rate_annual: 18.0,
+      },
+      created_at: new Date('2025-01-01').toISOString(),
+    });
+
+    // 2. Seed Blocks & Units for Generic Apartment name
     const blockAId = 'block_tower_alpha';
     this.blocks.set(blockAId, {
       id: blockAId,
@@ -136,6 +179,42 @@ class InMemoryDatabase {
       super_built_up_area: 1200,
       occupancy_status: 'VACANT',
       virtual_account_number: 'CHOLDRBLR101',
+    });
+
+    // Seed Blocks & Units for Silver Oak Heights
+    const blockSilverA = 'block_silver_a';
+    this.blocks.set(blockSilverA, {
+      id: blockSilverA,
+      society_id: silverOakId,
+      name: 'Tower A',
+      total_floors: 10,
+    });
+    this.units.set('unit_silver_201', {
+      id: 'unit_silver_201',
+      society_id: silverOakId,
+      block_id: blockSilverA,
+      unit_number: 'Flat 201',
+      super_built_up_area: 1400,
+      occupancy_status: 'OWNER_OCCUPIED',
+      virtual_account_number: 'SLVOAKBLR201',
+    });
+
+    // Seed Blocks & Units for Palm Meadows
+    const blockPalmV = 'block_palm_v';
+    this.blocks.set(blockPalmV, {
+      id: blockPalmV,
+      society_id: palmMeadowsId,
+      name: 'Villa Enclave',
+      total_floors: 2,
+    });
+    this.units.set('unit_palm_v1', {
+      id: 'unit_palm_v1',
+      society_id: palmMeadowsId,
+      block_id: blockPalmV,
+      unit_number: 'Villa 1',
+      super_built_up_area: 2800,
+      occupancy_status: 'OWNER_OCCUPIED',
+      virtual_account_number: 'PLMMDWBLRV1',
     });
 
     // 3. Seed Verified Resident User (Avinash)

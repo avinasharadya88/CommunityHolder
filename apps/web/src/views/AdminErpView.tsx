@@ -9,16 +9,58 @@ import {
   Eye,
   RefreshCw,
   Building,
+  Building2,
   UserCheck,
   Send,
   Database,
   ArrowRight,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { InsetWell } from '../components/InsetWell';
 
 export const AdminErpView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'KYC_QUEUE' | 'LEDGER' | 'BILLING' | 'DPDPA'>('KYC_QUEUE');
+
+  // Admin Session & Apartment State
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(true);
+  const [managerName, setManagerName] = useState('Rajesh Kumar');
+  const [managerRole, setManagerRole] = useState('Estate Manager');
+  const [societies, setSocieties] = useState<any[]>([
+    { id: 'soc_prestige_greenwoods', name: 'Generic Apartment name', code: 'GEN-APT-01' },
+    { id: 'soc_silver_oak', name: 'Silver Oak Heights', code: 'SLV-OAK-02' },
+    { id: 'soc_palm_meadows', name: 'Palm Meadows Residency', code: 'PLM-MDW-03' },
+  ]);
+  const [selectedSocietyId, setSelectedSocietyId] = useState<string>(
+    api.getSelectedSocietyId()
+  );
+  const [selectedSocietyName, setSelectedSocietyName] = useState<string>(
+    api.getSelectedSocietyName()
+  );
+
+  useEffect(() => {
+    api.getSocieties().then((list) => {
+      if (list && list.length > 0) {
+        setSocieties(list);
+        const match = list.find((s) => s.id === selectedSocietyId);
+        if (match) {
+          setSelectedSocietyName(match.name);
+          api.setSelectedSociety(match.id, match.name);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSocietyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const socId = e.target.value;
+    const soc = societies.find((s) => s.id === socId);
+    setSelectedSocietyId(socId);
+    if (soc) {
+      setSelectedSocietyName(soc.name);
+      api.setSelectedSociety(soc.id, soc.name);
+    }
+  };
 
   // KYC Queue State
   const [applications, setApplications] = useState<any[]>([]);
@@ -134,7 +176,7 @@ export const AdminErpView: React.FC = () => {
 
   const handleGenerateBilling = async () => {
     try {
-      const res = await api.generateMonthlyBilling(billingRate);
+      const res = await api.generateMonthlyBilling(billingRate, selectedSocietyId);
       setBillingResult(res);
       loadLedger();
     } catch (err: any) {
@@ -161,13 +203,80 @@ export const AdminErpView: React.FC = () => {
     }
   };
 
+  if (!isAdminLoggedIn) {
+    return (
+      <div className="w-full max-w-md mx-auto p-6 my-8 rounded-3xl bg-obsidian-card border border-white/10 shadow-2xl space-y-6">
+        <div className="text-center space-y-2">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-cred-gold/10 border border-cred-gold/30 flex items-center justify-center text-cred-gold">
+            <Building2 className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-extrabold text-white tracking-tight">ESTATE MANAGER ERP LOGIN</h2>
+          <p className="text-xs text-slate-400">Select apartment estate & access administrative ledger</p>
+        </div>
+
+        <div className="space-y-4">
+          <InsetWell>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+              Select Apartment / Estate
+            </label>
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-cred-gold flex-shrink-0" />
+              <select
+                value={selectedSocietyId}
+                onChange={handleSocietyChange}
+                className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none cursor-pointer"
+              >
+                {societies.map((s) => (
+                  <option key={s.id} value={s.id} className="bg-obsidian text-white">
+                    {s.name} ({s.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </InsetWell>
+
+          <InsetWell>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+              Manager / Officer Identity
+            </label>
+            <input
+              type="text"
+              value={managerName}
+              onChange={(e) => setManagerName(e.target.value)}
+              className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none"
+            />
+          </InsetWell>
+
+          <InsetWell>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+              Administrative Passcode
+            </label>
+            <input
+              type="password"
+              defaultValue="admin88"
+              className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none font-mono"
+            />
+          </InsetWell>
+
+          <button
+            onClick={() => setIsAdminLoggedIn(true)}
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-yellow-500 to-cred-gold text-obsidian font-extrabold text-sm uppercase tracking-wider shadow-pill-raised hover:shadow-neon-gold transition flex items-center justify-center gap-2"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Access ERP Console</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full max-w-6xl mx-auto p-4 md:p-6 space-y-6">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-5 rounded-3xl bg-obsidian-card border border-white/10 shadow-xl">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-cred-gold/10 border border-cred-gold/30 flex items-center justify-center text-cred-gold">
-            <Building className="w-6 h-6" />
+            <Building2 className="w-6 h-6" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -176,12 +285,30 @@ export const AdminErpView: React.FC = () => {
                 ADMIN CONSOLE
               </span>
             </div>
-            <p className="text-xs text-slate-400">Prestige Greenwoods • Manager: Rajesh Kumar (Bellandur Branch)</p>
+            <p className="text-xs text-slate-400">{selectedSocietyName} • Manager: {managerName} ({managerRole})</p>
           </div>
         </div>
 
-        {/* Global Stats */}
-        <div className="flex items-center gap-3">
+        {/* Global Stats & Apartment Switcher */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-obsidian-well border border-white/5">
+            <Building2 className="w-4 h-4 text-cred-gold flex-shrink-0" />
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase font-bold text-slate-400">Active Estate</span>
+              <select
+                value={selectedSocietyId}
+                onChange={handleSocietyChange}
+                className="bg-transparent text-xs font-bold text-white focus:outline-none cursor-pointer"
+              >
+                {societies.map((s) => (
+                  <option key={s.id} value={s.id} className="bg-obsidian text-white">
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="px-4 py-2 rounded-2xl bg-obsidian-well border border-white/5 text-right">
             <div className="text-[10px] uppercase font-bold text-slate-500">Pending KYC</div>
             <div className="text-lg font-mono font-bold text-cred-amber">{applications.length} Queue</div>
@@ -190,6 +317,14 @@ export const AdminErpView: React.FC = () => {
             <div className="text-[10px] uppercase font-bold text-slate-500">Ledger Balance</div>
             <div className="text-lg font-mono font-bold text-cred-mint">Balanced ✓</div>
           </div>
+
+          <button
+            onClick={() => setIsAdminLoggedIn(false)}
+            title="Switch Apartment / Admin Logout"
+            className="p-2.5 rounded-2xl bg-obsidian-raised border border-white/10 text-slate-400 hover:text-white transition"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
 

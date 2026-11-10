@@ -181,13 +181,14 @@ export const AuthController = {
 
     const roles = await UserRepository.getUserRoles(user.id);
     const { unitId, societyId } = await UserRepository.getUserUnitAndSociety(user.id);
+    const activeSocietyId = req.body.society_id || societyId || 'soc_prestige_greenwoods';
 
     // Issue JWT
     const token = jwt.sign(
       {
         userId: user.id,
         phone_e164: user.phone_e164,
-        society_id: societyId,
+        society_id: activeSocietyId,
         unit_id: unitId,
         roles,
         kyc_status: user.kyc_status,
@@ -207,7 +208,7 @@ export const AuthController = {
         full_name: user.full_name,
         kyc_status: user.kyc_status,
         roles,
-        active_society_id: societyId,
+        active_society_id: activeSocietyId,
         unit_id: unitId,
       },
     });

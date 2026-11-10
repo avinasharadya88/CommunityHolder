@@ -1030,7 +1030,7 @@ Hairline Borders & Dividers:
 +-------------------------------------------------------------+
 | Full Legal Name:      [ Avinash Aradya                    ] |
 | Email Address:        [ avinash@example.com               ] |
-| Select Society:       [ Prestige Greenwoods, Bangalore  v ] |
+| Select Society:       [ Generic Apartment name, Bangalore v ] |
 | Select Tower / Block: [ Tower Alpha                     v ] |
 | Select Flat / Unit:   [ Flat 1204                       v ] |
 | My Relationship:      (o) Owner   ( ) Tenant   ( ) Family   |
@@ -1059,7 +1059,7 @@ Hairline Borders & Dividers:
 |                    Application Under Review                 |
 |                                                             |
 |  Your registration for Flat 1204 (Tower Alpha) at           |
-|  Prestige Greenwoods has been submitted.                    |
+|  Generic Apartment name has been submitted.                 |
 |                                                             |
 |  Status: PENDING MANUAL VERIFICATION                        |
 |  Application ID: #CH-88219                                  |
@@ -1140,7 +1140,7 @@ Hairline Borders & Dividers:
 ### 5.6 Web Admin / Facility Manager KYC Verification Workspace
 ```
 +----------------------------------------------------------------------------------------------------+
-| COMMUNITYHOLDER ERP | Prestige Greenwoods | Estate Manager Portal             [User: Rajesh (FM)]  |
+| COMMUNITYHOLDER ERP | Generic Apartment name | Estate Manager Portal          [User: Rajesh (FM)]  |
 +----------------------------------------------------------------------------------------------------+
 | [Dashboard] [KYC Approvals (8 Pending)] [Accounting] [Gate Logs] [Helpdesk] [Assets]              |
 +----------------------------------------------------------------------------------------------------+

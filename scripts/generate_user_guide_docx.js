@@ -406,7 +406,7 @@ async function buildDocx() {
           // CHAPTER 2
           heading1('Chapter 2: Persona 1 — Resident Owner (Approved Resident)'),
           p(
-            'The Resident Owner persona represents an approved resident living in Flat 1204 (Tower Alpha) of Prestige Greenwoods. The resident has access to the full suite of luxury super-app features.'
+            'The Resident Owner persona represents an approved resident living in Flat 1204 (Tower Alpha) of Generic Apartment name. The resident can select their apartment upon logging in and has access to the full suite of luxury super-app features.'
           ),
 
           heading2('2.1 Mobile Phone Passwordless Login & OTP Verification'),

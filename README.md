@@ -81,6 +81,12 @@ The complete product, architectural, and engineering blueprint has been document
    - Covers desktop web access, Android Mobile PWA (Chrome), and iOS Mobile PWA (Safari).
    - In-depth operational documentation for live gate intercom radar, CRED Slide-to-Pay mechanics, split-screen KYC watermarking, double-entry general ledger verification, and troubleshooting FAQ.
 
+8. 🗄️ **[DATA_STORAGE_AND_HANDOFFS.md](file:///Users/avinasharadya88/Documents/CommunityHolder/DATA_STORAGE_AND_HANDOFFS.md)** — **Backend Connection, Data Storage & Workflow Handoffs**:
+   - End-to-end transparent guide explaining how the React frontend connects to the Express API (Vite reverse proxy, JWT tokens, header injection).
+   - Multi-tenant locality architecture enabling apartment selection on login across Mobile, Guard Tablet, and Admin ERP.
+   - Dual-layer data tier: Supabase Cloud PostgreSQL 16 (Project `ggzbyynthvxwkpdbjklf`) paired with synchronized in-memory datastores for offline/CI resilience.
+   - Exhaustive sequence diagrams and payload specifications for 6 core workflow handoffs (Auth/OTP, KYC Confinement Guard, Gate Intercom Radar, ERP Double-Entry Billing, Banking VAN Webhooks, and DPDPA 90-Day Privacy Purge).
+
 ---
 
 ## 🛠️ Technology Stack Plan

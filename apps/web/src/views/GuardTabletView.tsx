@@ -15,6 +15,9 @@ import {
   Check,
   ChevronRight,
   Car,
+  Building2,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { api } from '../api/client';
 import { InsetWell } from '../components/InsetWell';
@@ -22,6 +25,45 @@ import { InsetWell } from '../components/InsetWell';
 export const GuardTabletView: React.FC = () => {
   // Tabs: 'PIN_VALIDATOR' | 'WALK_IN' | 'ACTIVE_VISITORS' | 'PARCELS'
   const [activeTab, setActiveTab] = useState<'PIN_VALIDATOR' | 'WALK_IN' | 'ACTIVE_VISITORS' | 'PARCELS'>('PIN_VALIDATOR');
+
+  // Guard Station Auth & Apartment State
+  const [isStationLoggedIn, setIsStationLoggedIn] = useState(true);
+  const [officerName, setOfficerName] = useState('Ramesh Singh');
+  const [stationGate, setStationGate] = useState('NORTH GATE');
+  const [societies, setSocieties] = useState<any[]>([
+    { id: 'soc_prestige_greenwoods', name: 'Generic Apartment name', code: 'GEN-APT-01' },
+    { id: 'soc_silver_oak', name: 'Silver Oak Heights', code: 'SLV-OAK-02' },
+    { id: 'soc_palm_meadows', name: 'Palm Meadows Residency', code: 'PLM-MDW-03' },
+  ]);
+  const [selectedSocietyId, setSelectedSocietyId] = useState<string>(
+    api.getSelectedSocietyId()
+  );
+  const [selectedSocietyName, setSelectedSocietyName] = useState<string>(
+    api.getSelectedSocietyName()
+  );
+
+  useEffect(() => {
+    api.getSocieties().then((list) => {
+      if (list && list.length > 0) {
+        setSocieties(list);
+        const match = list.find((s) => s.id === selectedSocietyId);
+        if (match) {
+          setSelectedSocietyName(match.name);
+          api.setSelectedSociety(match.id, match.name);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSocietyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const socId = e.target.value;
+    const soc = societies.find((s) => s.id === socId);
+    setSelectedSocietyId(socId);
+    if (soc) {
+      setSelectedSocietyName(soc.name);
+      api.setSelectedSociety(soc.id, soc.name);
+    }
+  };
 
   // PIN Barrier Numpad State
   const [pinDigits, setPinDigits] = useState('');
@@ -122,7 +164,7 @@ export const GuardTabletView: React.FC = () => {
     setWalkinSubmitting(true);
     try {
       await api.createVisitorPass({
-        society_id: 'soc_prestige_greenwoods',
+        society_id: selectedSocietyId || 'soc_prestige_greenwoods',
         unit_id: walkinUnit,
         visitor_type: walkinType,
         visitor_name: walkinName,
@@ -150,7 +192,7 @@ export const GuardTabletView: React.FC = () => {
   const handleLogParcel = async () => {
     try {
       const res = await api.logParcel({
-        society_id: 'soc_prestige_greenwoods',
+        society_id: selectedSocietyId || 'soc_prestige_greenwoods',
         unit_id: parcelUnit,
         courier_company: courierCompany,
         photo_url: 'https://cdn.communityholder.com/parcels/sample.jpg',
@@ -160,6 +202,77 @@ export const GuardTabletView: React.FC = () => {
       alert(err.message);
     }
   };
+
+  if (!isStationLoggedIn) {
+    return (
+      <div className="w-full max-w-md mx-auto p-6 my-8 rounded-3xl bg-obsidian-card border border-white/10 shadow-2xl space-y-6">
+        <div className="text-center space-y-2">
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-cred-mint/10 border border-cred-mint/30 flex items-center justify-center text-cred-mint">
+            <Shield className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-extrabold text-white tracking-tight">GUARD STATION LOGIN</h2>
+          <p className="text-xs text-slate-400">Select apartment & activate guard tablet console</p>
+        </div>
+
+        <div className="space-y-4">
+          <InsetWell>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+              Select Apartment / Society
+            </label>
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-cred-mint flex-shrink-0" />
+              <select
+                value={selectedSocietyId}
+                onChange={handleSocietyChange}
+                className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none cursor-pointer"
+              >
+                {societies.map((s) => (
+                  <option key={s.id} value={s.id} className="bg-obsidian text-white">
+                    {s.name} ({s.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </InsetWell>
+
+          <InsetWell>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+              Gate Post Station
+            </label>
+            <select
+              value={stationGate}
+              onChange={(e) => setStationGate(e.target.value)}
+              className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none cursor-pointer"
+            >
+              <option value="NORTH GATE" className="bg-obsidian text-white">North Gate • Tablet #01</option>
+              <option value="MAIN GATE" className="bg-obsidian text-white">Main Boom Barrier • Tablet #02</option>
+              <option value="SOUTH SERVICE GATE" className="bg-obsidian text-white">South Service Gate • Tablet #03</option>
+            </select>
+          </InsetWell>
+
+          <InsetWell>
+            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+              Officer On Duty
+            </label>
+            <input
+              type="text"
+              value={officerName}
+              onChange={(e) => setOfficerName(e.target.value)}
+              className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none"
+            />
+          </InsetWell>
+
+          <button
+            onClick={() => setIsStationLoggedIn(true)}
+            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cred-mint-dark to-cred-mint text-obsidian font-extrabold text-sm uppercase tracking-wider shadow-pill-raised hover:shadow-neon-mint transition flex items-center justify-center gap-2"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Activate Guard Station</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-5xl mx-auto p-4 md:p-6 space-y-6">
@@ -171,17 +284,32 @@ export const GuardTabletView: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-white tracking-tight">GATEKEEPER STATION • NORTH GATE</h2>
+              <h2 className="text-lg font-bold text-white tracking-tight">GATEKEEPER STATION • {stationGate}</h2>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cred-mint/20 text-cred-mint border border-cred-mint/40">
                 TABLET #01
               </span>
             </div>
-            <p className="text-xs text-slate-400">Prestige Greenwoods • Security Officer: Ramesh Singh</p>
+            <p className="text-xs text-slate-400">{selectedSocietyName} • Security Officer: {officerName}</p>
           </div>
         </div>
 
-        {/* Sync & Connectivity Status */}
-        <div className="flex items-center gap-3">
+        {/* Sync & Connectivity Status & Apartment Selector */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-obsidian-well border border-white/5">
+            <Building2 className="w-4 h-4 text-cred-mint flex-shrink-0" />
+            <select
+              value={selectedSocietyId}
+              onChange={handleSocietyChange}
+              className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer"
+            >
+              {societies.map((s) => (
+                <option key={s.id} value={s.id} className="bg-obsidian text-white">
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-obsidian-well border border-white/5 text-xs">
             {isOnline ? (
               <>
@@ -201,6 +329,14 @@ export const GuardTabletView: React.FC = () => {
             className="px-3 py-1.5 rounded-xl bg-obsidian-raised border border-white/10 text-xs font-semibold text-slate-300 hover:text-white"
           >
             Toggle {isOnline ? 'Offline' : 'Online'} Mode
+          </button>
+
+          <button
+            onClick={() => setIsStationLoggedIn(false)}
+            title="Switch Guard Station or Apartment"
+            className="p-2 rounded-xl bg-obsidian-raised border border-white/10 text-slate-400 hover:text-white transition"
+          >
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>

@@ -49,6 +49,24 @@ class ApiClient {
     return this.currentUser;
   }
 
+  // Society / Apartment Selection
+  async getSocieties(): Promise<any[]> {
+    return this.request('/societies');
+  }
+
+  getSelectedSocietyId(): string {
+    return localStorage.getItem('ch_selected_society_id') || 'soc_prestige_greenwoods';
+  }
+
+  getSelectedSocietyName(): string {
+    return localStorage.getItem('ch_selected_society_name') || 'Generic Apartment name';
+  }
+
+  setSelectedSociety(id: string, name: string) {
+    localStorage.setItem('ch_selected_society_id', id);
+    localStorage.setItem('ch_selected_society_name', name);
+  }
+
   private async request(endpoint: string, options: RequestInit = {}) {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -84,10 +102,10 @@ class ApiClient {
     });
   }
 
-  async verifyOtp(phone_e164: string, otp: string) {
+  async verifyOtp(phone_e164: string, otp: string, society_id?: string) {
     const data = await this.request('/auth/verify-otp', {
       method: 'POST',
-      body: JSON.stringify({ phone_e164, otp }),
+      body: JSON.stringify({ phone_e164, otp, society_id }),
     });
     if (data.access_token && data.user) {
       this.setSession(data.access_token, data.user);
@@ -174,10 +192,10 @@ class ApiClient {
     return this.request('/erp/reports/ledger');
   }
 
-  async generateMonthlyBilling(rate: number) {
+  async generateMonthlyBilling(rate: number, society_id: string = 'soc_prestige_greenwoods') {
     return this.request('/erp/invoices/generate-monthly', {
       method: 'POST',
-      body: JSON.stringify({ society_id: 'soc_prestige_greenwoods', rate_per_sqft: rate }),
+      body: JSON.stringify({ society_id, rate_per_sqft: rate }),
     });
   }
 

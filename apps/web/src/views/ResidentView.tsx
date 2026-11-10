@@ -15,6 +15,7 @@ import {
   Upload,
   FileText,
   AlertCircle,
+  Building2,
 } from 'lucide-react';
 import { api, UserSession } from '../api/client';
 import { BlackCard } from '../components/BlackCard';
@@ -31,6 +32,19 @@ export const ResidentView: React.FC = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+
+  // Societies State
+  const [societies, setSocieties] = useState<any[]>([
+    { id: 'soc_prestige_greenwoods', name: 'Generic Apartment name', code: 'GEN-APT-01' },
+    { id: 'soc_silver_oak', name: 'Silver Oak Heights', code: 'SLV-OAK-02' },
+    { id: 'soc_palm_meadows', name: 'Palm Meadows Residency', code: 'PLM-MDW-03' },
+  ]);
+  const [selectedSocietyId, setSelectedSocietyId] = useState<string>(
+    user?.active_society_id || api.getSelectedSocietyId()
+  );
+  const [selectedSocietyName, setSelectedSocietyName] = useState<string>(
+    api.getSelectedSocietyName()
+  );
 
   // KYC Form State (for unregistered users)
   const [fullName, setFullName] = useState('Aditi Rao');
@@ -54,6 +68,29 @@ export const ResidentView: React.FC = () => {
   const [duesPaid, setDuesPaid] = useState(false);
 
   // Sync state with API
+  useEffect(() => {
+    api.getSocieties().then((list) => {
+      if (list && list.length > 0) {
+        setSocieties(list);
+        const match = list.find((s) => s.id === selectedSocietyId);
+        if (match) {
+          setSelectedSocietyName(match.name);
+          api.setSelectedSociety(match.id, match.name);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleSocietyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const socId = e.target.value;
+    const soc = societies.find((s) => s.id === socId);
+    setSelectedSocietyId(socId);
+    if (soc) {
+      setSelectedSocietyName(soc.name);
+      api.setSelectedSociety(soc.id, soc.name);
+    }
+  };
+
   useEffect(() => {
     if (user && user.kyc_status === 'APPROVED') {
       loadResidentData();
@@ -90,7 +127,7 @@ export const ResidentView: React.FC = () => {
     setAuthLoading(true);
     setAuthError('');
     try {
-      const res = await api.verifyOtp(`${phoneCountry}${phoneNumber}`, otpCode);
+      const res = await api.verifyOtp(`${phoneCountry}${phoneNumber}`, otpCode, selectedSocietyId);
       setUser(res.user);
     } catch (e: any) {
       setAuthError(e.message || 'Invalid verification code');
@@ -105,7 +142,7 @@ export const ResidentView: React.FC = () => {
     try {
       await api.submitKyc({
         full_name: fullName,
-        society_id: 'soc_prestige_greenwoods',
+        society_id: selectedSocietyId || 'soc_prestige_greenwoods',
         block_id: 'block_tower_alpha',
         unit_id: 'unit_alpha_101',
         relationship_type: relationshipType,
@@ -183,7 +220,7 @@ export const ResidentView: React.FC = () => {
     if (!guestName) return;
     try {
       const res = await api.createVisitorPass({
-        society_id: 'soc_prestige_greenwoods',
+        society_id: selectedSocietyId || 'soc_prestige_greenwoods',
         unit_id: user?.unit_id || 'unit_alpha_1204',
         visitor_type: guestType,
         visitor_name: guestName,
@@ -242,6 +279,26 @@ export const ResidentView: React.FC = () => {
 
               {!otpSent ? (
                 <div className="space-y-4">
+                  <InsetWell>
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
+                      Select Apartment / Society
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-cred-mint flex-shrink-0" />
+                      <select
+                        value={selectedSocietyId}
+                        onChange={handleSocietyChange}
+                        className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none cursor-pointer"
+                      >
+                        {societies.map((s) => (
+                          <option key={s.id} value={s.id} className="bg-obsidian text-white">
+                            {s.name} ({s.code})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </InsetWell>
+
                   <InsetWell>
                     <label className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block mb-1">
                       Mobile Number
@@ -489,7 +546,9 @@ export const ResidentView: React.FC = () => {
               {/* Header */}
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-[10px] font-mono tracking-widest text-cred-mint uppercase">PRESTIGE GREENWOODS</div>
+                  <div className="text-[10px] font-mono tracking-widest text-cred-mint uppercase">
+                    {selectedSocietyName.toUpperCase()}
+                  </div>
                   <h3 className="text-base font-bold text-white capitalize">{user.full_name}</h3>
                 </div>
                 <div className="flex items-center gap-2">
@@ -529,7 +588,7 @@ export const ResidentView: React.FC = () => {
 
               {/* 3D Black Card Carousel Item */}
               <BlackCard
-                societyName="Prestige Greenwoods"
+                societyName={selectedSocietyName}
                 unitNumber="Flat 1204 - Alpha"
                 residentName={user.full_name}
                 vanNumber="CHOLDRBLR1204"

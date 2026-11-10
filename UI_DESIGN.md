@@ -167,7 +167,7 @@ Residents who own multiple flats, or split between being an owner in one communi
 
 ```
 +------------------------------------------------------------------+
-|  PRESTIGE GREENWOODS                      [ CH RESTRICTED CREST ]|
+|  GENERIC APARTMENT NAME                   [ CH RESTRICTED CREST ]|
 |  Tower Alpha • Flat 1204                                         |
 |                                                                  |
 |  CURRENT BALANCE                       VERIFIED STATUS           |
@@ -250,7 +250,7 @@ Residents who own multiple flats, or split between being an owner in one communi
 +--------------------------------------------------------------------------+
 |  LEGAL DETAILS                                                           |
 |  Full Name:        [ Avinash Aradya                                 ]    |
-|  Select Society:   [ Prestige Greenwoods                          v ]    |
+|  Select Society:   [ Generic Apartment name                       v ]    |
 |  Block / Unit:     [ Tower Alpha                    ] [ Flat 1204 v ]    |
 |  Relationship:     (o) Owner-Occupant   ( ) Tenant   ( ) Landlord        |
 |                                                                          |
@@ -288,7 +288,7 @@ Residents who own multiple flats, or split between being an owner in one communi
 |                     [ GLOWING ORBITAL SHIELD ICON ]                      |
 |                                                                          |
 |                         APPLICATION UNDER REVIEW                         |
-|                       Prestige Greenwoods • Flat 1204                    |
+|                       Generic Apartment name • Flat 1204                  |
 |                                                                          |
 |  +--------------------------------------------------------------------+  |
 |  |  STATUS: PENDING ESTATE MANAGER APPROVAL                           |  |
@@ -320,7 +320,7 @@ Residents who own multiple flats, or split between being an owner in one communi
 +--------------------------------------------------------------------------+
 |                                                                          |
 |  +--------------------------------------------------------------------+  |
-|  |  [ THE BLACK CARD ]                     PRESTIGE GREENWOODS        |  |
+|  |  [ THE BLACK CARD ]                     GENERIC APARTMENT NAME     |  |
 |  |                                         Tower Alpha • Flat 1204    |  |
 |  |  MAINTENANCE DUES                                                  |  |
 |  |  $ 120.00                               [ V ACTIVE OWNER ]         |  |
@@ -418,7 +418,7 @@ Designed for outdoor sunlight and quick 2-second touches by security guards:
 The desktop ERP portal adopts the same dark luxury aesthetics, optimized for widescreen dual-pane document audits:
 ```
 +----------------------------------------------------------------------------------------------------+
-| COMMUNITYHOLDER ERP | Prestige Greenwoods Layout                          [Estate Mgr: Rajesh K.]  |
+| COMMUNITYHOLDER ERP | Generic Apartment name Layout                       [Estate Mgr: Rajesh K.]  |
 +----------------------------------------------------------------------------------------------------+
 | [Overview]   [KYC Verification Queue (8)]   [General Ledger]   [Gate Stream]   [Assets & AMC]      |
 +----------------------------------------------------------------------------------------------------+

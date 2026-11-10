@@ -29,11 +29,8 @@ export function App() {
             <div>
               <div className="flex items-center gap-1.5">
                 <h1 className="text-sm font-extrabold tracking-tight text-white">CommunityHolder</h1>
-                <span className="text-[10px] font-mono font-bold text-cred-mint uppercase px-1.5 py-0.2 rounded bg-cred-mint/10 border border-cred-mint/30">
-                  CRED-UX
-                </span>
               </div>
-              <p className="text-[10px] text-slate-400">Tactile Neumorphic Apartment Operating System</p>
+              <p className="text-[10px] text-slate-400">Smart Community & Apartment Operating System</p>
             </div>
           </div>
 
